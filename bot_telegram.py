@@ -167,7 +167,7 @@ async def hoy(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(RESUMEN.get(dia_es, "No hay resumen para hoy."), parse_mode="HTML")
 
 async def test(update, context: ContextTypes.DEFAULT_TYPE):
-    await enviar_mensaje(update.message.bot, "✅ El bot está funcionando y los mensajes automáticos están activos.")
+    await update.message.reply_text("✅ El bot está funcionando y los mensajes automáticos están activos.")
 
 async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
