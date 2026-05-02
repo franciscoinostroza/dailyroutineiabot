@@ -2,12 +2,12 @@
 BOT DE TELEGRAM - MI SISTEMA DE VIDA
 =====================================
 Requisitos:
-  pip install python-telegram-bot==20.7 apscheduler pytz
+  pip install python-telegram-bot==20.7 apscheduler pytz gspread google-auth
 
 Configuración:
   1. Hablá con @BotFather en Telegram y creá un bot → te da un TOKEN
   2. Hablá con @userinfobot para obtener tu CHAT_ID
-  3. Reemplazá TOKEN y CHAT_ID abajo
+  3. Completá el archivo .env con TOKEN, CHAT_ID, OPENAI_KEY, SHEET_ID, CREDENTIALS_FILE
   4. Ejecutá: python bot.py
 """
 
@@ -19,162 +19,114 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
+import gspread
+from google.oauth2.service_account import Credentials
 import pytz
 import asyncio
 
 load_dotenv()
 
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────
-TOKEN    = os.getenv("TOKEN")
-CHAT_ID  = os.getenv("CHAT_ID")
-TIMEZONE = os.getenv("TIMEZONE", "America/Argentina/Buenos_Aires")
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
+TOKEN            = os.getenv("TOKEN")
+CHAT_ID          = os.getenv("CHAT_ID")
+TIMEZONE         = os.getenv("TIMEZONE", "America/Argentina/Buenos_Aires")
+SHEET_ID         = os.getenv("SHEET_ID")
+CREDENTIALS_FILE = os.getenv("CREDENTIALS_FILE", "credentials.json")
+openai_client    = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
 # ─────────────────────────────────────────────────────────────────
 
 logging.basicConfig(level=logging.INFO)
 tz = pytz.timezone(TIMEZONE)
 
-# ─── HORARIOS POR DÍA ────────────────────────────────────────────
-HORARIOS = {
-    # (hora, minuto): "mensaje"
-    # Aplica lunes a domingo salvo se indique
-}
-
-MENSAJES_DIA = {
-    "lunes": [
-        (6, 0,
-            "☀️ <b>Buenos días, Francisco!</b>\n\n"
-            "📋 <b>Tu día de hoy — Lunes</b>\n"
-            "🧹 Limpieza: Baño completo (9:15)\n"
-            "🍽 Almuerzo: Arroz con pollo\n"
-            "💼 Trabajo: 14:00 – 18:00\n"
-            "🗑 Recordatorio: tirar la basura después de las 20:00"
-        ),
-        (9, 15, "🧹 <b>Limpieza del día:</b> Baño completo (20 min). ¡Arrancá!"),
-        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
-    ],
-    "martes": [
-        (6, 0,
-            "☀️ <b>Buenos días, Francisco!</b>\n\n"
-            "📋 <b>Tu día de hoy — Martes</b>\n"
-            "🧹 Limpieza: Barrer y trapear planta baja (9:15)\n"
-            "🍽 Almuerzo: Tarta de pollo\n"
-            "💼 Trabajo: 14:00 – 18:00\n"
-            "🗑 Recordatorio: tirar la basura después de las 20:00"
-        ),
-        (9, 15, "🧹 <b>Limpieza del día:</b> Barrer y trapear planta baja (20 min). ¡Arrancá!"),
-        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
-    ],
-    "miercoles": [
-        (6, 0,
-            "☀️ <b>Buenos días, Francisco!</b>\n\n"
-            "📋 <b>Tu día de hoy — Miércoles</b>\n"
-            "🧹 Limpieza: 2do piso — ordenar, cama y piso (9:15)\n"
-            "🍽 Almuerzo: Pastas con salsa\n"
-            "💼 Trabajo: 14:00 – 18:00\n"
-            "🗑 Recordatorio: tirar la basura después de las 20:00"
-        ),
-        (9, 15, "🧹 <b>Limpieza del día:</b> 2do piso — ordenar, hacer la cama, limpiar piso (20 min). ¡Arrancá!"),
-        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
-    ],
-    "jueves": [
-        (6, 0,
-            "☀️ <b>Buenos días, Francisco!</b>\n\n"
-            "📋 <b>Tu día de hoy — Jueves</b>\n"
-            "🧹 Limpieza: Ordenar objetos generales (9:15)\n"
-            "🍽 Almuerzo: Pata y muslo al horno con papas\n"
-            "💼 Trabajo: 14:00 – 18:00\n"
-            "🗑 Recordatorio: tirar basura Y reciclaje después de las 20:00"
-        ),
-        (9, 15, "🧹 <b>Limpieza del día:</b> Ordenar objetos generales (15 min). ¡Arrancá!"),
-        (20, 0, "🗑 Acordate de <b>tirar la basura Y el reciclaje</b> hoy."),
-    ],
-    "viernes": [
-        (6, 0,
-            "☀️ <b>Buenos días, Francisco!</b>\n\n"
-            "📋 <b>Tu día de hoy — Viernes</b>\n"
-            "🧹 Limpieza: Barrer y trapear (repaso, 9:15)\n"
-            "🍽 Almuerzo: Milanesas de pollo con puré\n"
-            "💼 Trabajo: 14:00 – 17:00\n"
-            "⛪ Grupo iglesia: 17:00"
-        ),
-        (9, 15, "🧹 <b>Limpieza del día:</b> Barrer y trapear (repaso, 20 min). ¡Arrancá!"),
-    ],
-    "sabado": [
-        (6, 0,
-            "☀️ <b>Buenos días, Francisco!</b>\n\n"
-            "📋 <b>Tu día de hoy — Sábado</b>\n"
-            "🧹 Limpieza: 2do piso (9:15)\n"
-            "🍽 Almuerzo: Libre\n"
-            "💼 Trabajo: 14:00 – 17:00\n"
-            "⛪ Iglesia: 17:00\n"
-            "🗑 Recordatorio: basura Y reciclaje después de las 20:00"
-        ),
-        (9, 15, "🧹 <b>Limpieza del día:</b> 2do piso (20 min). ¡Arrancá!"),
-        (20, 0, "🗑 Acordate de <b>tirar la basura Y el reciclaje</b> hoy."),
-    ],
-    "domingo": [
-        (6, 0,
-            "☀️ <b>Buenos días, Francisco!</b>\n\n"
-            "📋 <b>Tu día de hoy — Domingo</b>\n"
-            "🧹 Limpieza: Antes de salir (9:15)\n"
-            "⛪ Iglesia: 10:00 — enlistarse a las 9:50\n"
-            "🍽 Almuerzo libre al volver\n"
-            "🗑 Recordatorio: tirar la basura después de las 20:00"
-        ),
-        (9, 15, "🧹 <b>Limpieza del día:</b> Ordenar antes de salir. ¡Arrancá!"),
-        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
-    ],
-}
-
 DIAS_SEMANA = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
 
-# ─── RESUMEN DEL DÍA ─────────────────────────────────────────────
-RESUMEN = {
-    "lunes":     "📋 <b>Hoy es LUNES</b>\n🧹 Limpieza: Baño completo (9:15)\n🍽 Almuerzo: Arroz con pollo\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura después de las 20:00",
-    "martes":    "📋 <b>Hoy es MARTES</b>\n🧹 Limpieza: Barrer y trapear planta baja (9:15)\n🍽 Almuerzo: Tarta de pollo\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura después de las 20:00",
-    "miercoles": "📋 <b>Hoy es MIÉRCOLES</b>\n🧹 Limpieza: 2do piso (9:15)\n🍽 Almuerzo: Pastas con salsa\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura después de las 20:00",
-    "jueves":    "📋 <b>Hoy es JUEVES</b>\n🧹 Limpieza: Ordenar objetos generales (9:15)\n🍽 Almuerzo: Pata y muslo al horno con papas\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura Y reciclaje después de las 20:00",
-    "viernes":   "📋 <b>Hoy es VIERNES</b>\n🧹 Limpieza: Barrer y trapear (repaso, 9:15)\n🍽 Almuerzo: Milanesas de pollo con puré\n💼 Trabajo: 14:00 – 17:00\n⛪ Grupo iglesia: 17:00",
-    "sabado":    "📋 <b>Hoy es SÁBADO</b>\n🧹 Limpieza: 2do piso (9:15)\n🍽 Almuerzo: Libre\n💼 Trabajo: 14:00 – 17:00\n⛪ Iglesia: 17:00\n🗑 Basura Y reciclaje después de las 20:00",
-    "domingo":   "📋 <b>Hoy es DOMINGO</b>\n🧹 Limpieza: Antes de salir (9:15)\n⛪ Iglesia: 10:00 (salir 9:50)\n🍽 Almuerzo libre al volver\n🗑 Basura después de las 20:00",
-}
+# Datos de agenda (se cargan desde Google Sheets)
+MENSAJES_DIA: dict = {}
+RESUMEN: dict = {}
+
+
+def cargar_agenda():
+    global MENSAJES_DIA, RESUMEN
+    try:
+        scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
+        gc = gspread.authorize(creds)
+        ws = gc.open_by_key(SHEET_ID).sheet1
+        rows = ws.get_all_records()
+
+        mensajes: dict = {}
+        for row in rows:
+            dia    = str(row["dia"]).strip().lower()
+            hora   = int(row["hora"])
+            minuto = int(row["minuto"])
+            msg    = str(row["mensaje"])
+            mensajes.setdefault(dia, []).append((hora, minuto, msg))
+
+        resumen: dict = {}
+        for dia, lista in mensajes.items():
+            for h, m, txt in lista:
+                if h == 6 and m == 0:
+                    resumen[dia] = txt
+                    break
+
+        MENSAJES_DIA = mensajes
+        RESUMEN = resumen
+        total = sum(len(v) for v in mensajes.values())
+        logging.info(f"Agenda cargada desde Sheet: {total} mensajes en {len(mensajes)} días.")
+        return True
+    except Exception as e:
+        logging.error(f"Error cargando agenda desde Sheet: {e}")
+        return False
+
 
 # ─── HANDLERS ────────────────────────────────────────────────────
 async def hoy(update, context: ContextTypes.DEFAULT_TYPE):
     from datetime import datetime
     dia = datetime.now(tz).strftime("%A").lower()
     dia_es = DIAS_SEMANA[["monday","tuesday","wednesday","thursday","friday","saturday","sunday"].index(dia)]
-    await update.message.reply_text(RESUMEN.get(dia_es, "No hay resumen para hoy."), parse_mode="HTML")
+    await update.message.reply_text(RESUMEN.get(dia_es, "No hay resumen para hoy."))
+
+async def recargar(update, context: ContextTypes.DEFAULT_TYPE):
+    ok = cargar_agenda()
+    if ok:
+        await update.message.reply_text(
+            "✅ Agenda recargada desde Google Sheets.\n"
+            "Nota: los mensajes automáticos programados requieren reiniciar el bot para actualizarse."
+        )
+    else:
+        await update.message.reply_text("❌ Error al recargar la agenda. Revisá los logs.")
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
-        "👋 <b>Hola Francisco!</b> Soy tu asistente personal de rutina diaria.\n\n"
+        "👋 Hola Francisco! Soy tu asistente personal de rutina diaria.\n\n"
         "Esto es lo que puedo hacer por vos:\n\n"
-        "📅 <b>Recordatorios automáticos</b> — Te aviso a cada hora del día según tu agenda semanal.\n\n"
-        "🤖 <b>Asistente con IA</b> — Escribime cualquier cosa y te respondo en base a tu rutina. Por ejemplo:\n"
-        "  • <i>¿Qué debería estar haciendo ahora?</i>\n"
-        "  • <i>¿Qué como hoy?</i>\n"
-        "  • <i>¿Qué me falta hacer?</i>\n\n"
-        "📋 <b>Comandos disponibles:</b>\n"
+        "📅 Recordatorios automáticos — Te aviso a cada hora del día según tu agenda semanal.\n\n"
+        "🤖 Asistente con IA — Escribime cualquier cosa y te respondo en base a tu rutina. Por ejemplo:\n"
+        "  • ¿Qué debería estar haciendo ahora?\n"
+        "  • ¿Qué como hoy?\n"
+        "  • ¿Qué me falta hacer?\n\n"
+        "📋 Comandos disponibles:\n"
         "/hoy — Ver el resumen del día\n"
+        "/recargar — Recargar la agenda desde Google Sheets\n"
         "/test — Verificar que el bot funciona\n"
         "/ayuda — Ver esta ayuda\n"
     )
-    await update.message.reply_text(texto, parse_mode="HTML")
+    await update.message.reply_text(texto)
 
 async def test(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ El bot está funcionando y los mensajes automáticos están activos.")
 
 async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
-        " <b>Bot - Mi Sistema de Vida</b>\n\n"
+        "Bot - Mi Sistema de Vida\n\n"
         "Comandos disponibles:\n"
         "/hoy — Ver el resumen del día\n"
+        "/recargar — Recargar agenda desde Google Sheets\n"
         "/ayuda — Ver esta ayuda\n\n"
-        "El bot te avisa automáticamente en cada horario del día "
+        "El bot te avisa automáticamente en cada horario del día."
     )
-    await update.message.reply_text(texto, parse_mode="HTML")
+    await update.message.reply_text(texto)
+
 
 # ─── IA: RESPUESTA A MENSAJES LIBRES ─────────────────────────────
 def _build_system_prompt():
@@ -230,12 +182,13 @@ async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
         respuesta = f"Error al consultar la IA: {e}"
     await update.message.reply_text(respuesta)
 
+
 # ─── ENVÍO PROGRAMADO ────────────────────────────────────────────
 async def enviar_mensaje(bot, texto):
     historial.append({"role": "assistant", "content": texto})
     if len(historial) > MAX_HISTORIAL:
         del historial[:-MAX_HISTORIAL]
-    await bot.send_message(chat_id=CHAT_ID, text=texto, parse_mode="HTML")
+    await bot.send_message(chat_id=CHAT_ID, text=texto)
 
 def programar_mensajes(scheduler, bot):
     dia_map = {
@@ -243,7 +196,9 @@ def programar_mensajes(scheduler, bot):
         "jueves": "thu", "viernes": "fri", "sabado": "sat", "domingo": "sun"
     }
     for dia_es, mensajes in MENSAJES_DIA.items():
-        dia_en = dia_map[dia_es]
+        dia_en = dia_map.get(dia_es)
+        if not dia_en:
+            continue
         for hora, minuto, texto in mensajes:
             scheduler.add_job(
                 enviar_mensaje,
@@ -252,13 +207,17 @@ def programar_mensajes(scheduler, bot):
                 id=f"{dia_es}_{hora}_{minuto}"
             )
 
+
 # ─── MAIN ────────────────────────────────────────────────────────
 async def main():
+    cargar_agenda()
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("hoy", hoy))
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("test", test))
+    app.add_handler(CommandHandler("recargar", recargar))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
     scheduler = AsyncIOScheduler()
@@ -275,4 +234,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

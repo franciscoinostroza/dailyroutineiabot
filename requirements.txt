@@ -3,3 +3,5 @@ apscheduler
 pytz
 openai
 python-dotenv
+gspread
+google-auth
