@@ -41,108 +41,89 @@ HORARIOS = {
 }
 
 MENSAJES_DIA = {
-    "lunes":    [
-        (6,  0,  "☀️ <b>Buenos días!</b> Hora del devocional. Que sea un buen comienzo."),
-        (6, 45,  " Devocional terminado. Ahora 45 min de aprendizaje libre."),
-        (8,  0,  " Hora de preparar el desayuno. Listo antes de las 9:00."),
-        (9,  0,  "️ Platos y limpiar la mesa del desayuno."),
-        (9, 15,  " <b>Limpieza del día:</b> Baño completo (20 min)."),
-        (10, 0,  " Hora del parque con la familia. Disfrutá el sol!"),
-        (12, 0,  " De vuelta a casa. Si quedó limpieza pendiente, ahora es el momento."),
-        (12,30,  " Almuerzo: Arroz con pollo. Acordate de limpiar la mesa y los platos."),
-        (14, 0,  " <b>Bloque de trabajo.</b> Revisá tus tareas pendientes y arrancá."),
-        (16, 0,  "☕ Pausa de 15 min. Estirá las piernas."),
-        (16,15,  " Continuá con el proyecto o buscá trabajos nuevos en Workana."),
-        (17,30,  " Respondé mensajes y cerrá el día de trabajo."),
-        (18, 0,  " Tiempo con el bebé. Dejá el trabajo para después."),
-        (20, 0,  "️ Cena. No olvidés tirar la basura después de las 20:00."),
-        (20,30,  " Tiempo familiar: lectura y oración. Buenas noches familia!"),
-        (22, 0,  " Hora de descansar. Revisá si hay pan para mañana antes de dormir."),
+    "lunes": [
+        (6, 0,
+            "☀️ <b>Buenos días, Francisco!</b>\n\n"
+            "📋 <b>Tu día de hoy — Lunes</b>\n"
+            "🧹 Limpieza: Baño completo (9:15)\n"
+            "🍽 Almuerzo: Arroz con pollo\n"
+            "💼 Trabajo: 14:00 – 18:00\n"
+            "🗑 Recordatorio: tirar la basura después de las 20:00"
+        ),
+        (9, 15, "🧹 <b>Limpieza del día:</b> Baño completo (20 min). ¡Arrancá!"),
+        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
     ],
-    "martes":   [
-        (6,  0,  "☀️ <b>Buenos días!</b> Hora del devocional."),
-        (6, 45,  " Aprendizaje libre hasta las 8:00."),
-        (8,  0,  " A preparar el desayuno."),
-        (9,  0,  "️ Platos y mesa limpia."),
-        (9, 15,  " <b>Limpieza del día:</b> Barrer y trapear planta baja (20 min)."),
-        (10, 0,  " Parque con la familia!"),
-        (12,30,  " Almuerzo: Tarta de pollo (resto del lunes)."),
-        (14, 0,  " <b>Bloque de trabajo.</b> Arrancá con lo más importante."),
-        (16, 0,  "☕ Pausa corta."),
-        (16,15,  " Seguí con proyectos o Workana."),
-        (18, 0,  " Tiempo con el bebé."),
-        (20, 0,  "️ Cena. Tirar basura después de las 20:00."),
-        (20,30,  " Lectura y oración familiar."),
-        (22, 0,  " Descanso. Revisá el pan para mañana."),
+    "martes": [
+        (6, 0,
+            "☀️ <b>Buenos días, Francisco!</b>\n\n"
+            "📋 <b>Tu día de hoy — Martes</b>\n"
+            "🧹 Limpieza: Barrer y trapear planta baja (9:15)\n"
+            "🍽 Almuerzo: Tarta de pollo\n"
+            "💼 Trabajo: 14:00 – 18:00\n"
+            "🗑 Recordatorio: tirar la basura después de las 20:00"
+        ),
+        (9, 15, "🧹 <b>Limpieza del día:</b> Barrer y trapear planta baja (20 min). ¡Arrancá!"),
+        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
     ],
     "miercoles": [
-        (6,  0,  "☀️ <b>Buenos días!</b> Hora del devocional."),
-        (6, 45,  " Aprendizaje libre."),
-        (8,  0,  " Desayuno."),
-        (9,  0,  "️ Platos y mesa."),
-        (9, 15,  " <b>Limpieza del día:</b> 2do piso — ordenar, hacer la cama, limpiar piso (20 min)."),
-        (10, 0,  " Parque familiar!"),
-        (12,30,  " Almuerzo: Pastas con salsa."),
-        (14, 0,  " <b>Bloque de trabajo.</b>"),
-        (16, 0,  "☕ Pausa."),
-        (16,15,  " Workana o proyecto."),
-        (18, 0,  " Tiempo con el bebé."),
-        (20, 0,  "️ Cena. Basura después de las 20:00."),
-        (20,30,  " Lectura y oración."),
-        (22, 0,  " Descanso. Revisá el pan."),
+        (6, 0,
+            "☀️ <b>Buenos días, Francisco!</b>\n\n"
+            "📋 <b>Tu día de hoy — Miércoles</b>\n"
+            "🧹 Limpieza: 2do piso — ordenar, cama y piso (9:15)\n"
+            "🍽 Almuerzo: Pastas con salsa\n"
+            "💼 Trabajo: 14:00 – 18:00\n"
+            "🗑 Recordatorio: tirar la basura después de las 20:00"
+        ),
+        (9, 15, "🧹 <b>Limpieza del día:</b> 2do piso — ordenar, hacer la cama, limpiar piso (20 min). ¡Arrancá!"),
+        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
     ],
     "jueves": [
-        (6,  0,  "☀️ <b>Buenos días!</b> Devocional."),
-        (6, 45,  " Aprendizaje libre."),
-        (8,  0,  " Desayuno."),
-        (9,  0,  "️ Platos y mesa."),
-        (9, 15,  " <b>Limpieza del día:</b> Ordenar objetos generales (15 min)."),
-        (10, 0,  " Parque!"),
-        (12,30,  " Almuerzo: Pata y muslo al horno con papas."),
-        (14, 0,  " <b>Bloque de trabajo.</b>"),
-        (16, 0,  "☕ Pausa."),
-        (16,15,  " Workana o proyecto."),
-        (18, 0,  " Tiempo con el bebé."),
-        (20, 0,  "️ Cena. No olvidés: <b>tirar basura Y reciclaje</b> después de las 20:00."),
-        (20,30,  " Lectura y oración."),
-        (22, 0,  " Descanso. Revisá el pan."),
+        (6, 0,
+            "☀️ <b>Buenos días, Francisco!</b>\n\n"
+            "📋 <b>Tu día de hoy — Jueves</b>\n"
+            "🧹 Limpieza: Ordenar objetos generales (9:15)\n"
+            "🍽 Almuerzo: Pata y muslo al horno con papas\n"
+            "💼 Trabajo: 14:00 – 18:00\n"
+            "🗑 Recordatorio: tirar basura Y reciclaje después de las 20:00"
+        ),
+        (9, 15, "🧹 <b>Limpieza del día:</b> Ordenar objetos generales (15 min). ¡Arrancá!"),
+        (20, 0, "🗑 Acordate de <b>tirar la basura Y el reciclaje</b> hoy."),
     ],
     "viernes": [
-        (6,  0,  "☀️ <b>Buenos días!</b> Devocional."),
-        (6, 45,  " Aprendizaje libre."),
-        (8,  0,  " Desayuno."),
-        (9,  0,  "️ Platos y mesa."),
-        (9, 15,  " <b>Limpieza del día:</b> Barrer y trapear (repaso, 20 min)."),
-        (10, 0,  " Parque!"),
-        (12,30,  " Almuerzo: Milanesas de pollo con puré."),
-        (14, 0,  " <b>Bloque de trabajo.</b> Hoy terminás a las 17:00."),
-        (17, 0,  "⛪ Hora de salir al grupo de iglesia. Buen encuentro!"),
-        (22, 0,  " Llegaron a casa. Descansá bien."),
+        (6, 0,
+            "☀️ <b>Buenos días, Francisco!</b>\n\n"
+            "📋 <b>Tu día de hoy — Viernes</b>\n"
+            "🧹 Limpieza: Barrer y trapear (repaso, 9:15)\n"
+            "🍽 Almuerzo: Milanesas de pollo con puré\n"
+            "💼 Trabajo: 14:00 – 17:00\n"
+            "⛪ Grupo iglesia: 17:00"
+        ),
+        (9, 15, "🧹 <b>Limpieza del día:</b> Barrer y trapear (repaso, 20 min). ¡Arrancá!"),
     ],
     "sabado": [
-        (6,  0,  "☀️ <b>Buenos días!</b> Devocional."),
-        (6, 45,  " Aprendizaje libre."),
-        (8,  0,  " Desayuno."),
-        (9,  0,  "️ Platos y mesa."),
-        (9, 15,  " <b>Limpieza del día:</b> 2do piso + sacar reciclaje después de las 20:00."),
-        (10, 0,  " Parque!"),
-        (12,30,  " Almuerzo libre."),
-        (14, 0,  " <b>Bloque de trabajo.</b> Terminás a las 17:00."),
-        (17, 0,  "⛪ Salida a la iglesia. Que sea una linda reunión!"),
-        (20, 0,  "️ No olvidés: <b>basura Y reciclaje</b> al llegar a casa."),
-        (22, 0,  " Llegaron a casa. Descansá."),
+        (6, 0,
+            "☀️ <b>Buenos días, Francisco!</b>\n\n"
+            "📋 <b>Tu día de hoy — Sábado</b>\n"
+            "🧹 Limpieza: 2do piso (9:15)\n"
+            "🍽 Almuerzo: Libre\n"
+            "💼 Trabajo: 14:00 – 17:00\n"
+            "⛪ Iglesia: 17:00\n"
+            "🗑 Recordatorio: basura Y reciclaje después de las 20:00"
+        ),
+        (9, 15, "🧹 <b>Limpieza del día:</b> 2do piso (20 min). ¡Arrancá!"),
+        (20, 0, "🗑 Acordate de <b>tirar la basura Y el reciclaje</b> hoy."),
     ],
     "domingo": [
-        (6,  0,  "☀️ <b>Buenos días!</b> Devocional dominical."),
-        (6, 45,  " Aprendizaje libre."),
-        (8,  0,  " Desayuno familiar."),
-        (9,  0,  "️ Platos y mesa."),
-        (9, 15,  " <b>Limpieza del día</b> antes de salir."),
-        (9, 50,  "⛪ Preparate para salir. Enlistarse a las 10:00."),
-        (11, 0,  " Iglesia. Buen culto!"),
-        (13,30,  " De vuelta a casa. Almuerzo."),
-        (20, 0,  "️ Tirar basura. Revisar pan para mañana."),
-        (22, 0,  " Buenas noches. Nueva semana mañana!"),
+        (6, 0,
+            "☀️ <b>Buenos días, Francisco!</b>\n\n"
+            "📋 <b>Tu día de hoy — Domingo</b>\n"
+            "🧹 Limpieza: Antes de salir (9:15)\n"
+            "⛪ Iglesia: 10:00 — enlistarse a las 9:50\n"
+            "🍽 Almuerzo libre al volver\n"
+            "🗑 Recordatorio: tirar la basura después de las 20:00"
+        ),
+        (9, 15, "🧹 <b>Limpieza del día:</b> Ordenar antes de salir. ¡Arrancá!"),
+        (20, 0, "🗑 Acordate de <b>tirar la basura</b> hoy."),
     ],
 }
 
@@ -150,13 +131,13 @@ DIAS_SEMANA = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "d
 
 # ─── RESUMEN DEL DÍA ─────────────────────────────────────────────
 RESUMEN = {
-    "lunes":     " <b>Hoy es LUNES</b>\n Limpieza: Baño completo\n Almuerzo: Arroz con pollo | Cena: Tarta de pollo\n Trabajo: 14:00 - 18:00",
-    "martes":    " <b>Hoy es MARTES</b>\n Limpieza: Barrer y trapear planta baja\n Almuerzo: Tarta de pollo | Cena: Milanesas de pollo\n Trabajo: 14:00 - 18:00",
-    "miercoles": " <b>Hoy es MIÉRCOLES</b>\n Limpieza: 2do piso\n Almuerzo: Pastas | Cena: Arroz con huevo\n Trabajo: 14:00 - 18:00",
-    "jueves":    " <b>Hoy es JUEVES</b>\n Limpieza: Ordenar objetos + reciclaje\n Almuerzo: Pata y muslo | Cena: Croquetas de atún\n Trabajo: 14:00 - 18:00",
-    "viernes":   " <b>Hoy es VIERNES</b>\n Limpieza: Barrer y trapear (repaso)\n Almuerzo: Milanesas con puré | Cena: Pastas\n Trabajo: 14:00 - 17:00\n⛪ Grupo iglesia: 17:00",
-    "sabado":    " <b>Hoy es SÁBADO</b>\n Limpieza: 2do piso + reciclaje\n Almuerzo: Libre | Cena: Libre\n Trabajo: 14:00 - 17:00\n⛪ Iglesia: 17:00",
-    "domingo":   " <b>Hoy es DOMINGO</b>\n Limpieza: Antes de salir (9:15)\n Almuerzo libre\n⛪ Iglesia: 10:00 - 12:30",
+    "lunes":     "📋 <b>Hoy es LUNES</b>\n🧹 Limpieza: Baño completo (9:15)\n🍽 Almuerzo: Arroz con pollo\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura después de las 20:00",
+    "martes":    "📋 <b>Hoy es MARTES</b>\n🧹 Limpieza: Barrer y trapear planta baja (9:15)\n🍽 Almuerzo: Tarta de pollo\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura después de las 20:00",
+    "miercoles": "📋 <b>Hoy es MIÉRCOLES</b>\n🧹 Limpieza: 2do piso (9:15)\n🍽 Almuerzo: Pastas con salsa\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura después de las 20:00",
+    "jueves":    "📋 <b>Hoy es JUEVES</b>\n🧹 Limpieza: Ordenar objetos generales (9:15)\n🍽 Almuerzo: Pata y muslo al horno con papas\n💼 Trabajo: 14:00 – 18:00\n🗑 Basura Y reciclaje después de las 20:00",
+    "viernes":   "📋 <b>Hoy es VIERNES</b>\n🧹 Limpieza: Barrer y trapear (repaso, 9:15)\n🍽 Almuerzo: Milanesas de pollo con puré\n💼 Trabajo: 14:00 – 17:00\n⛪ Grupo iglesia: 17:00",
+    "sabado":    "📋 <b>Hoy es SÁBADO</b>\n🧹 Limpieza: 2do piso (9:15)\n🍽 Almuerzo: Libre\n💼 Trabajo: 14:00 – 17:00\n⛪ Iglesia: 17:00\n🗑 Basura Y reciclaje después de las 20:00",
+    "domingo":   "📋 <b>Hoy es DOMINGO</b>\n🧹 Limpieza: Antes de salir (9:15)\n⛪ Iglesia: 10:00 (salir 9:50)\n🍽 Almuerzo libre al volver\n🗑 Basura después de las 20:00",
 }
 
 # ─── HANDLERS ────────────────────────────────────────────────────
@@ -219,7 +200,8 @@ def _build_system_prompt():
         "Sé cercano, cálido y natural — como un amigo que me conoce bien. No seas cortante ni frío.\n"
         "Evitá respuestas de una sola línea o frases sueltas como 'disfrutalo' sin nada más.\n"
         "Si me despido (chau, hasta luego, buenas noches, nos vemos, etc.), despedite vos también de forma cálida y natural.\n"
-        "No inventes horarios ni actividades que no estén en mi agenda."
+        "No inventes horarios ni actividades que no estén en mi agenda.\n"
+        "IMPORTANTE: No uses markdown. No uses asteriscos (*), almohadillas (#) ni ningún símbolo de formato. Escribí texto plano y natural."
     )
 
 historial = []
