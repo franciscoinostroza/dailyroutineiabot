@@ -417,30 +417,60 @@ async def historial_cmd(update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─── HANDLERS GENERALES ──────────────────────────────────────────
+TEXTO_AYUDA = (
+    "👋 Hola Francisco! Soy tu asistente personal.\n\n"
+
+    "📅 AGENDA\n"
+    "/hoy — Resumen del día actual\n"
+    "/listar — Ver toda la agenda semanal\n"
+    "/agregar <dia> <hora> <min> <mensaje>\n"
+    "   Ejemplo: /agregar lunes 10 0 Tomar medicación\n"
+    "/borrar <dia> <hora> <min>\n"
+    "   Ejemplo: /borrar lunes 10 0\n"
+    "/recargar — Recargar agenda desde Google Sheets\n\n"
+
+    "🛒 COMPRAS\n"
+    "/compra <producto> <cantidad> <precio> <super> <billetera>\n"
+    "   Ejemplo: /compra leche 3 1500 Coto Ualá\n"
+    "   → Registra la compra y aplica descuento automático si corresponde\n"
+    "/donde <producto>\n"
+    "   Ejemplo: /donde arroz\n"
+    "   → Muestra el mejor super hoy según descuentos vigentes\n"
+    "/descuentos — Ver todos los descuentos vigentes hoy\n"
+    "/gastos [YYYY-MM]\n"
+    "   Ejemplo: /gastos 2026-05\n"
+    "   → Total gastado, ahorro y desglose por super del mes\n"
+    "/historial [N]\n"
+    "   Ejemplo: /historial 20\n"
+    "   → Últimas N compras registradas (por defecto 10)\n\n"
+
+    "💳 DESCUENTOS DISPONIBLES\n"
+    "Lunes    → Coto con Ualá 25% (tope $15.000/mes)\n"
+    "Miércoles→ Día con Mercado Pago 10% (QR, sin tope)\n"
+    "Jueves   → Coto con Brubank 30% ⭐\n"
+    "           Carrefour con Mercado Pago 15% (QR)\n"
+    "           Día con Personal Pay 20%\n"
+    "Viernes  → Coto con Mercado Pago 25% (QR, excluye carnes/verduras)\n"
+    "Sábado   → Carrefour con Mercado Pago 10% (QR)\n"
+    "Último sáb → Carrefour con Ualá 20% (tope $10.000)\n"
+    "Domingo  → Carrefour con Mercado Pago 10% (QR)\n\n"
+
+    "🤖 IA\n"
+    "Escribime cualquier cosa sin usar / y te respondo en base a tu\n"
+    "agenda, tus descuentos y tu contexto personal. Por ejemplo:\n"
+    "  • ¿Qué debería estar haciendo ahora?\n"
+    "  • ¿Dónde me conviene hacer las compras esta semana?\n"
+    "  • ¿Cuánto ahorré este mes?\n"
+)
+
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
-    texto = (
-        "👋 Hola Francisco! Soy tu asistente personal.\n\n"
-        "📅 Agenda\n"
-        "/hoy — Resumen del día\n"
-        "/listar — Toda la agenda\n"
-        "/agregar <dia> <hora> <min> <msg> — Nuevo recordatorio\n"
-        "/borrar <dia> <hora> <min> — Eliminar recordatorio\n"
-        "/recargar — Recargar agenda desde Sheets\n\n"
-        "🛒 Compras\n"
-        "/compra <producto> <cant> <precio> <super> <billetera>\n"
-        "/donde <producto> — Mejor super hoy por descuento\n"
-        "/descuentos — Ver descuentos vigentes hoy\n"
-        "/gastos [YYYY-MM] — Resumen de gastos del mes\n"
-        "/historial [N] — Últimas N compras\n\n"
-        "🤖 O escribime directo para hablar con la IA."
-    )
-    await update.message.reply_text(texto)
+    await update.message.reply_text(TEXTO_AYUDA)
 
 async def test(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ El bot está funcionando.")
 
 async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
-    await start(update, context)
+    await update.message.reply_text(TEXTO_AYUDA)
 
 
 # ─── IA ──────────────────────────────────────────────────────────
