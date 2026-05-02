@@ -166,6 +166,22 @@ async def hoy(update, context: ContextTypes.DEFAULT_TYPE):
     dia_es = DIAS_SEMANA[["monday","tuesday","wednesday","thursday","friday","saturday","sunday"].index(dia)]
     await update.message.reply_text(RESUMEN.get(dia_es, "No hay resumen para hoy."), parse_mode="HTML")
 
+async def start(update, context: ContextTypes.DEFAULT_TYPE):
+    texto = (
+        "👋 <b>Hola Francisco!</b> Soy tu asistente personal de rutina diaria.\n\n"
+        "Esto es lo que puedo hacer por vos:\n\n"
+        "📅 <b>Recordatorios automáticos</b> — Te aviso a cada hora del día según tu agenda semanal.\n\n"
+        "🤖 <b>Asistente con IA</b> — Escribime cualquier cosa y te respondo en base a tu rutina. Por ejemplo:\n"
+        "  • <i>¿Qué debería estar haciendo ahora?</i>\n"
+        "  • <i>¿Qué como hoy?</i>\n"
+        "  • <i>¿Qué me falta hacer?</i>\n\n"
+        "📋 <b>Comandos disponibles:</b>\n"
+        "/hoy — Ver el resumen del día\n"
+        "/test — Verificar que el bot funciona\n"
+        "/ayuda — Ver esta ayuda\n"
+    )
+    await update.message.reply_text(texto, parse_mode="HTML")
+
 async def test(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ El bot está funcionando y los mensajes automáticos están activos.")
 
@@ -257,6 +273,7 @@ def programar_mensajes(scheduler, bot):
 # ─── MAIN ────────────────────────────────────────────────────────
 async def main():
     app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("hoy", hoy))
     app.add_handler(CommandHandler("ayuda", ayuda))
     app.add_handler(CommandHandler("test", test))
