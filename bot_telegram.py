@@ -12,17 +12,23 @@ Configuración:
 """
 
 import logging
+import os
+from dotenv import load_dotenv
 from telegram import Bot
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from openai import AsyncOpenAI
 import pytz
 import asyncio
 
+load_dotenv()
+
 # ─── CONFIGURACIÓN ───────────────────────────────────────────────
-TOKEN = "8606830778:AAHaj0h0GmQZervdw6RVLALkYnY6-7pSokU"       # Reemplazá con tu token de BotFather
-CHAT_ID = "@DailyRoutineIA_Bot"   # Reemplazá con tu chat ID
-TIMEZONE = "America/Argentina/Buenos_Aires"  # Cambiá si es otro país
+TOKEN    = os.getenv("TOKEN")
+CHAT_ID  = os.getenv("CHAT_ID")
+TIMEZONE = os.getenv("TIMEZONE", "America/Argentina/Buenos_Aires")
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
 # ─────────────────────────────────────────────────────────────────
 
 logging.basicConfig(level=logging.INFO)
@@ -170,6 +176,48 @@ async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(texto, parse_mode="Markdown")
 
+# ─── IA: RESPUESTA A MENSAJES LIBRES ─────────────────────────────
+def _build_system_prompt():
+    from datetime import datetime
+    dia = datetime.now(tz).strftime("%A").lower()
+    dia_es = DIAS_SEMANA[["monday","tuesday","wednesday","thursday","friday","saturday","sunday"].index(dia)]
+
+    agenda_completa = ""
+    for d in DIAS_SEMANA:
+        mensajes = "\n".join(
+            f"    {h:02d}:{m:02d} — {txt}" for h, m, txt in MENSAJES_DIA.get(d, [])
+        )
+        agenda_completa += f"\n{d.upper()}:\n{mensajes}\n"
+
+    return (
+        "Sos el asistente personal de Francisco. Conocés toda su agenda semanal y lo ayudás a seguirla.\n"
+        "Cuando te dirijas a él, llamalo Francisco (no 'amigo', no 'usuario').\n\n"
+        f"HOY ES {dia_es.upper()}.\n\n"
+        f"MI AGENDA COMPLETA:\n{agenda_completa}\n"
+        "Cuando te pregunte algo, respondé siempre en base a MI agenda real y en español.\n"
+        "Sé cercano, cálido y natural — como un amigo que me conoce bien. No seas cortante ni frío.\n"
+        "Evitá respuestas de una sola línea o frases sueltas como 'disfrutalo' sin nada más.\n"
+        "Si me despido (chau, hasta luego, buenas noches, nos vemos, etc.), despedite vos también de forma cálida y natural.\n"
+        "No inventes horarios ni actividades que no estén en mi agenda."
+    )
+
+async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
+    texto = update.message.text
+    await update.message.chat.send_action("typing")
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _build_system_prompt()},
+                {"role": "user", "content": texto}
+            ],
+            max_tokens=500,
+        )
+        respuesta = response.choices[0].message.content
+    except Exception as e:
+        respuesta = f"Error al consultar la IA: {e}"
+    await update.message.reply_text(respuesta)
+
 # ─── ENVÍO PROGRAMADO ────────────────────────────────────────────
 async def enviar_mensaje(bot, texto):
     await bot.send_message(chat_id=CHAT_ID, text=texto, parse_mode="Markdown")
@@ -194,13 +242,19 @@ async def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("hoy", hoy))
     app.add_handler(CommandHandler("ayuda", ayuda))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
     scheduler = AsyncIOScheduler()
     programar_mensajes(scheduler, app.bot)
     scheduler.start()
 
     print("✅ Bot iniciado. Esperando mensajes...")
-    await app.run_polling()
+    async with app:
+        await app.start()
+        await app.updater.start_polling()
+        await asyncio.Event().wait()
+        await app.updater.stop()
+        await app.stop()
 
 if __name__ == "__main__":
     asyncio.run(main())
