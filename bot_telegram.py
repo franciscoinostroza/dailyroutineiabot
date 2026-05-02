@@ -166,6 +166,9 @@ async def hoy(update, context: ContextTypes.DEFAULT_TYPE):
     dia_es = DIAS_SEMANA[["monday","tuesday","wednesday","thursday","friday","saturday","sunday"].index(dia)]
     await update.message.reply_text(RESUMEN.get(dia_es, "No hay resumen para hoy."), parse_mode="HTML")
 
+async def test(update, context: ContextTypes.DEFAULT_TYPE):
+    await enviar_mensaje(update.message.bot, "✅ El bot está funcionando y los mensajes automáticos están activos.")
+
 async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         " <b>Bot - Mi Sistema de Vida</b>\n\n"
@@ -256,6 +259,7 @@ async def main():
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("hoy", hoy))
     app.add_handler(CommandHandler("ayuda", ayuda))
+    app.add_handler(CommandHandler("test", test))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
     scheduler = AsyncIOScheduler()
