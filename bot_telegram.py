@@ -203,25 +203,37 @@ def _build_system_prompt():
         "No inventes horarios ni actividades que no estén en mi agenda."
     )
 
+historial = []
+MAX_HISTORIAL = 30
+
 async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
+    historial.append({"role": "user", "content": texto})
+    if len(historial) > MAX_HISTORIAL:
+        del historial[:-MAX_HISTORIAL]
     await update.message.chat.send_action("typing")
     try:
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": _build_system_prompt()},
-                {"role": "user", "content": texto}
+                *historial
             ],
             max_tokens=500,
         )
         respuesta = response.choices[0].message.content
+        historial.append({"role": "assistant", "content": respuesta})
+        if len(historial) > MAX_HISTORIAL:
+            del historial[:-MAX_HISTORIAL]
     except Exception as e:
         respuesta = f"Error al consultar la IA: {e}"
     await update.message.reply_text(respuesta)
 
 # ─── ENVÍO PROGRAMADO ────────────────────────────────────────────
 async def enviar_mensaje(bot, texto):
+    historial.append({"role": "assistant", "content": texto})
+    if len(historial) > MAX_HISTORIAL:
+        del historial[:-MAX_HISTORIAL]
     await bot.send_message(chat_id=CHAT_ID, text=texto, parse_mode="HTML")
 
 def programar_mensajes(scheduler, bot):
