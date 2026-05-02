@@ -1,15 +1,13 @@
 """
 BOT DE TELEGRAM - MI SISTEMA DE VIDA
 =====================================
-Requisitos:
-  pip install python-telegram-bot==20.7 apscheduler pytz gspread google-auth
-
-Configuración:
-  1. Hablá con @BotFather y creá un bot → TOKEN
-  2. Completá el .env con TOKEN, CHAT_ID, OPENAI_KEY, SHEET_ID, CREDENTIALS_FILE
-  3. Ejecutá: python bot_telegram.py
+Variables de entorno requeridas:
+  TOKEN, CHAT_ID, OPENAI_KEY, SHEET_ID, TIMEZONE
+  GOOGLE_CREDENTIALS  ← JSON completo del service account (Railway)
+  CREDENTIALS_FILE    ← alternativa local (default: credentials.json)
 """
 
+import json
 import logging
 import os
 import re
@@ -32,30 +30,46 @@ CHAT_ID          = os.getenv("CHAT_ID")
 TIMEZONE         = os.getenv("TIMEZONE", "America/Argentina/Buenos_Aires")
 SHEET_ID         = os.getenv("SHEET_ID")
 CREDENTIALS_FILE = os.getenv("CREDENTIALS_FILE", "credentials.json")
+GOOGLE_CREDS_JSON = os.getenv("GOOGLE_CREDENTIALS")   # JSON string para Railway
 openai_client    = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
 # ─────────────────────────────────────────────────────────────────
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 tz = pytz.timezone(TIMEZONE)
 
 DIAS_VALIDOS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
 DIAS_SEMANA  = DIAS_VALIDOS
-DIA_EN_ES    = {"monday":"lunes","tuesday":"martes","wednesday":"miercoles",
-                "thursday":"jueves","friday":"viernes","saturday":"sabado","sunday":"domingo"}
+DIA_EN_ES    = {
+    "monday":"lunes","tuesday":"martes","wednesday":"miercoles",
+    "thursday":"jueves","friday":"viernes","saturday":"sabado","sunday":"domingo"
+}
 
-# Datos de agenda (se cargan desde Google Sheets al iniciar)
 MENSAJES_DIA: dict = {}
 RESUMEN:      dict = {}
 
+# ─── CONEXIÓN SHEETS (con cache) ─────────────────────────────────
+_gc_cache = None
 
-# ─── HELPERS SHEETS ──────────────────────────────────────────────
-def get_spreadsheet():
+def get_gc():
+    global _gc_cache
+    if _gc_cache is not None:
+        return _gc_cache
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-    creds  = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
-    return gspread.authorize(creds).open_by_key(SHEET_ID)
+    if GOOGLE_CREDS_JSON:
+        info  = json.loads(GOOGLE_CREDS_JSON)
+        creds = Credentials.from_service_account_info(info, scopes=scopes)
+        logging.info("Google auth: usando GOOGLE_CREDENTIALS (env var)")
+    else:
+        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
+        logging.info(f"Google auth: usando archivo {CREDENTIALS_FILE}")
+    _gc_cache = gspread.authorize(creds)
+    return _gc_cache
 
 def get_worksheet(name="Agenda"):
-    return get_spreadsheet().worksheet(name)
+    return get_gc().open_by_key(SHEET_ID).worksheet(name)
 
 def dia_hoy_es():
     return DIA_EN_ES[datetime.now(tz).strftime("%A").lower()]
@@ -65,17 +79,15 @@ def es_ultimo_sabado():
     if hoy.weekday() != 5:
         return False
     from calendar import monthrange
-    ultimo_dia = monthrange(hoy.year, hoy.month)[1]
-    return hoy.day + 7 > ultimo_dia
+    return hoy.day + 7 > monthrange(hoy.year, hoy.month)[1]
 
-def parsear_tope(raw) -> float | None:
+def parsear_tope(raw):
     if not raw or str(raw).strip().lower() in ("", "sin tope", "-"):
         return None
     nums = re.sub(r"[^\d]", "", str(raw))
     return float(nums) if nums else None
 
-def descuentos_del_dia(dia_es: str) -> list[dict]:
-    """Devuelve descuentos para el día dado, incluyendo sabado_ultimo si aplica."""
+def descuentos_del_dia(dia_es: str) -> list:
     try:
         rows = get_worksheet("Descuentos").get_all_records()
     except Exception as e:
@@ -91,19 +103,19 @@ def descuentos_del_dia(dia_es: str) -> list[dict]:
     return resultado
 
 
-# ─── AGENDA ──────────────────────────────────────────────────────
+# ─── CARGA DE AGENDA ─────────────────────────────────────────────
 def cargar_agenda():
     global MENSAJES_DIA, RESUMEN
     try:
         rows = get_worksheet("Agenda").get_all_records()
-        mensajes: dict = {}
+        mensajes = {}
         for row in rows:
             dia    = str(row["dia"]).strip().lower()
             hora   = int(row["hora"])
             minuto = int(row["minuto"])
             msg    = str(row["mensaje"])
             mensajes.setdefault(dia, []).append((hora, minuto, msg))
-        resumen: dict = {}
+        resumen = {}
         for dia, lista in mensajes.items():
             for h, m, txt in lista:
                 if h == 6 and m == 0:
@@ -119,16 +131,51 @@ def cargar_agenda():
         return False
 
 
-# ─── HANDLERS AGENDA ─────────────────────────────────────────────
+# ─── AGENDA COMMANDS ─────────────────────────────────────────────
 async def hoy(update, context: ContextTypes.DEFAULT_TYPE):
     dia_es = dia_hoy_es()
-    await update.message.reply_text(RESUMEN.get(dia_es, "No hay resumen para hoy."))
+    texto  = RESUMEN.get(dia_es)
+    if not texto:
+        await update.message.reply_text(
+            f"No hay resumen para hoy ({dia_es}).\n"
+            "Si la agenda está vacía usá /recargar para sincronizar desde Google Sheets."
+        )
+        return
+    await update.message.reply_text(texto)
+
+async def listar(update, context: ContextTypes.DEFAULT_TYPE):
+    if not MENSAJES_DIA:
+        await update.message.reply_text(
+            "La agenda está vacía. Probá con /recargar para sincronizar desde Google Sheets."
+        )
+        return
+    texto = "📋 Agenda completa:\n\n"
+    for dia in DIAS_VALIDOS:
+        if dia not in MENSAJES_DIA:
+            continue
+        texto += f"{dia.upper()}:\n"
+        for h, m, msg in sorted(MENSAJES_DIA[dia]):
+            corto = (msg[:60] + "…") if len(msg) > 60 else msg
+            texto += f"  {h:02d}:{m:02d} — {corto}\n"
+        texto += "\n"
+    await update.message.reply_text(texto)
 
 async def recargar(update, context: ContextTypes.DEFAULT_TYPE):
+    global _gc_cache
+    _gc_cache = None   # forzar reconexión
     ok = cargar_agenda()
-    msg = "✅ Agenda recargada. Los recordatorios automáticos se actualizan al reiniciar." if ok \
-          else "❌ Error al recargar la agenda."
-    await update.message.reply_text(msg)
+    if ok:
+        dias = len(MENSAJES_DIA)
+        total = sum(len(v) for v in MENSAJES_DIA.values())
+        await update.message.reply_text(
+            f"✅ Agenda recargada: {total} recordatorios en {dias} días.\n"
+            "Los mensajes automáticos se actualizan al reiniciar el bot."
+        )
+    else:
+        await update.message.reply_text(
+            "❌ No se pudo conectar con Google Sheets.\n"
+            "Verificá que GOOGLE_CREDENTIALS esté bien configurado en Railway."
+        )
 
 async def agregar(update, context: ContextTypes.DEFAULT_TYPE):
     """Uso: /agregar <dia> <hora> <minuto> <mensaje>"""
@@ -136,20 +183,21 @@ async def agregar(update, context: ContextTypes.DEFAULT_TYPE):
     if len(args) < 4:
         await update.message.reply_text(
             "Uso: /agregar <dia> <hora> <minuto> <mensaje>\n"
+            f"Días válidos: {', '.join(DIAS_VALIDOS)}\n"
             "Ejemplo: /agregar lunes 10 0 Tomar medicación"
         )
         return
     dia = args[0].lower()
     if dia not in DIAS_VALIDOS:
-        await update.message.reply_text(f"Día inválido. Usá: {', '.join(DIAS_VALIDOS)}")
+        await update.message.reply_text(f"Día inválido. Usá uno de:\n{', '.join(DIAS_VALIDOS)}")
         return
     try:
         hora, minuto = int(args[1]), int(args[2])
     except ValueError:
-        await update.message.reply_text("Hora y minuto deben ser números.")
+        await update.message.reply_text("Hora y minuto deben ser números enteros.")
         return
     if not (0 <= hora <= 23 and 0 <= minuto <= 59):
-        await update.message.reply_text("Hora 0-23, minuto 0-59.")
+        await update.message.reply_text("Hora: 0-23. Minuto: 0-59.")
         return
     mensaje = " ".join(args[3:])
     try:
@@ -159,13 +207,16 @@ async def agregar(update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ Recordatorio agregado:\n  {dia.capitalize()} {hora:02d}:{minuto:02d} — {mensaje}"
         )
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        await update.message.reply_text(f"❌ Error al guardar en Sheets: {e}")
 
 async def borrar(update, context: ContextTypes.DEFAULT_TYPE):
     """Uso: /borrar <dia> <hora> <minuto>"""
     args = context.args
     if len(args) != 3:
-        await update.message.reply_text("Uso: /borrar <dia> <hora> <minuto>\nEjemplo: /borrar lunes 10 0")
+        await update.message.reply_text(
+            "Uso: /borrar <dia> <hora> <minuto>\n"
+            "Ejemplo: /borrar lunes 10 0"
+        )
         return
     dia = args[0].lower()
     try:
@@ -182,7 +233,10 @@ async def borrar(update, context: ContextTypes.DEFAULT_TYPE):
             None
         )
         if fila is None:
-            await update.message.reply_text(f"No encontré recordatorio el {dia} a las {hora:02d}:{minuto:02d}.")
+            await update.message.reply_text(
+                f"No encontré un recordatorio el {dia} a las {hora:02d}:{minuto:02d}.\n"
+                "Usá /listar para ver los horarios exactos."
+            )
             return
         ws.delete_rows(fila)
         cargar_agenda()
@@ -190,54 +244,44 @@ async def borrar(update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
-async def listar(update, context: ContextTypes.DEFAULT_TYPE):
-    if not MENSAJES_DIA:
-        await update.message.reply_text("No hay recordatorios cargados.")
-        return
-    texto = "📋 Agenda completa:\n\n"
-    for dia in DIAS_VALIDOS:
-        if dia not in MENSAJES_DIA:
-            continue
-        texto += f"{dia.upper()}:\n"
-        for h, m, msg in sorted(MENSAJES_DIA[dia]):
-            resumen_msg = (msg[:55] + "...") if len(msg) > 55 else msg
-            texto += f"  {h:02d}:{m:02d} — {resumen_msg}\n"
-        texto += "\n"
-    await update.message.reply_text(texto)
 
-
-# ─── HANDLERS COMPRAS ────────────────────────────────────────────
+# ─── COMPRAS COMMANDS ────────────────────────────────────────────
 async def compra(update, context: ContextTypes.DEFAULT_TYPE):
-    """Registra una compra y aplica descuento si corresponde.
+    """
     Uso: /compra <producto> <cantidad> <precio_unitario> <supermercado> <billetera>
     Ejemplo: /compra leche 3 1500 Coto Ualá
     """
     args = context.args
     if len(args) < 5:
         await update.message.reply_text(
-            "Uso: /compra <producto> <cantidad> <precio> <supermercado> <billetera>\n"
-            "Ejemplo: /compra leche 3 1500 Coto Ualá"
+            "Uso:\n"
+            "/compra <producto> <cantidad> <precio> <supermercado> <billetera>\n\n"
+            "Ejemplo:\n"
+            "/compra leche 3 1500 Coto Ualá\n\n"
+            "Supermercados: Coto, Carrefour, Día\n"
+            "Billeteras: MercadoPago, Brubank, Ualá, PersonalPay"
         )
         return
+
     producto     = args[0]
     supermercado = args[3]
     billetera    = args[4]
+
     try:
         cantidad    = float(args[1])
         precio_unit = float(args[2])
     except ValueError:
-        await update.message.reply_text("Cantidad y precio deben ser números.")
+        await update.message.reply_text("Cantidad y precio deben ser números.\nEjemplo: /compra leche 3 1500 Coto Ualá")
         return
 
     fecha        = datetime.now(tz).strftime("%Y-%m-%d")
     precio_total = cantidad * precio_unit
     dia_es       = dia_hoy_es()
 
-    # Buscar descuento vigente para supermercado+billetera
     descuento_row = next(
         (d for d in descuentos_del_dia(dia_es)
-         if supermercado.lower() in str(d.get("supermercado","")).lower()
-         and billetera.lower() in str(d.get("billetera","")).lower()),
+         if supermercado.lower() in str(d.get("supermercado", "")).lower()
+         and billetera.lower() in str(d.get("billetera", "")).lower()),
         None
     )
 
@@ -247,7 +291,7 @@ async def compra(update, context: ContextTypes.DEFAULT_TYPE):
         ahorro_bruto = precio_total * pct / 100
         ahorro       = min(ahorro_bruto, tope) if tope else ahorro_bruto
         precio_final = precio_total - ahorro
-        tope_aviso   = f" (tope ${tope:,.0f})" if tope and ahorro < ahorro_bruto else ""
+        tope_aviso   = f" (tope ${tope:,.0f} — ahorro real ${ahorro:,.0f})" if tope and ahorro < ahorro_bruto else ""
     else:
         pct = ahorro = 0.0
         precio_final = precio_total
@@ -259,42 +303,41 @@ async def compra(update, context: ContextTypes.DEFAULT_TYPE):
             supermercado, billetera, pct, round(ahorro, 2), round(precio_final, 2)
         ])
     except Exception as e:
-        await update.message.reply_text(f"❌ Error al guardar: {e}")
+        await update.message.reply_text(f"❌ Error al guardar en Sheets: {e}")
         return
 
     if descuento_row:
         msg = (
             f"✅ Compra registrada\n"
-            f"  {producto} x{cantidad:g} — ${precio_total:,.0f}\n"
+            f"  {producto} x{cantidad:g} → ${precio_total:,.0f}\n"
             f"  {supermercado} con {billetera}\n"
-            f"  Descuento: {pct:g}%{tope_aviso} → ahorrás ${ahorro:,.0f}\n"
+            f"  Descuento {pct:g}%{tope_aviso} → ahorrás ${ahorro:,.0f}\n"
             f"  Total final: ${precio_final:,.0f} 💸"
         )
     else:
         msg = (
             f"✅ Compra registrada\n"
-            f"  {producto} x{cantidad:g} — ${precio_total:,.0f}\n"
+            f"  {producto} x{cantidad:g} → ${precio_total:,.0f}\n"
             f"  {supermercado} con {billetera}\n"
             f"  Sin descuento hoy para esa combinación.\n"
-            f"  Usá /descuentos para ver las mejores opciones."
+            f"  Usá /descuentos para ver las mejores opciones de hoy."
         )
     await update.message.reply_text(msg)
 
 
 async def descuentos(update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra los descuentos vigentes para hoy."""
-    dia_es  = dia_hoy_es()
-    filas   = descuentos_del_dia(dia_es)
+    dia_es = dia_hoy_es()
+    filas  = descuentos_del_dia(dia_es)
 
     if not filas:
-        await update.message.reply_text(f"No hay descuentos registrados para hoy ({dia_es}).")
+        await update.message.reply_text(f"Sin descuentos registrados para hoy ({dia_es}).")
         return
 
     filas_ord = sorted(filas, key=lambda r: float(r.get("porcentaje", 0)), reverse=True)
     msg = f"💳 Descuentos del {dia_es}:\n\n"
     for d in filas_ord:
-        tope  = parsear_tope(d.get("tope"))
-        notas = d.get("notas", "")
+        tope      = parsear_tope(d.get("tope"))
+        notas     = d.get("notas", "")
         tope_txt  = f" — tope ${tope:,.0f}" if tope else " — sin tope"
         notas_txt = f"\n   ⚠️ {notas}" if notas else ""
         msg += f"⭐ {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%{tope_txt}{notas_txt}\n"
@@ -302,44 +345,40 @@ async def descuentos(update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def donde(update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra dónde conviene comprar hoy según descuentos.
-    Uso: /donde <producto>
-    """
     if not context.args:
-        await update.message.reply_text("Uso: /donde <producto>\nEjemplo: /donde leche")
+        await update.message.reply_text(
+            "Uso: /donde <producto>\n"
+            "Ejemplo: /donde arroz\n"
+            "Te digo qué super conviene hoy según los descuentos."
+        )
         return
-    producto = " ".join(context.args)
-    dia_es   = dia_hoy_es()
-    filas    = descuentos_del_dia(dia_es)
+    producto  = " ".join(context.args)
+    dia_es    = dia_hoy_es()
+    filas     = descuentos_del_dia(dia_es)
 
     if not filas:
-        await update.message.reply_text(f"No hay descuentos hoy ({dia_es}). Comprá donde quieras.")
+        await update.message.reply_text(f"No hay descuentos registrados para hoy ({dia_es}). Comprá donde quieras.")
         return
 
     filas_ord = sorted(filas, key=lambda r: float(r.get("porcentaje", 0)), reverse=True)
     mejor     = filas_ord[0]
     tope      = parsear_tope(mejor.get("tope"))
-    tope_txt  = f" — tope ${tope:,.0f}" if tope else " — sin tope"
     notas     = mejor.get("notas", "")
+    tope_txt  = f" — tope ${tope:,.0f}" if tope else " — sin tope"
     notas_txt = f"\n⚠️ {notas}" if notas else ""
 
-    msg = f"🛒 Para comprar {producto} hoy ({dia_es}):\n\n"
-    msg += f"Mejor opción: {mejor['supermercado']} con {mejor['billetera']} → {mejor['porcentaje']:g}%{tope_txt}{notas_txt}\n\n"
-
+    msg = f"🛒 Para {producto} hoy ({dia_es}):\n\n"
+    msg += f"Mejor: {mejor['supermercado']} con {mejor['billetera']} → {mejor['porcentaje']:g}%{tope_txt}{notas_txt}\n"
     if len(filas_ord) > 1:
-        msg += "Otras opciones:\n"
+        msg += "\nOtras opciones:\n"
         for d in filas_ord[1:]:
             t     = parsear_tope(d.get("tope"))
             t_txt = f" — tope ${t:,.0f}" if t else " — sin tope"
             msg  += f"  {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%{t_txt}\n"
-
     await update.message.reply_text(msg)
 
 
 async def gastos(update, context: ContextTypes.DEFAULT_TYPE):
-    """Analiza gastos del mes actual o el indicado.
-    Uso: /gastos [YYYY-MM]
-    """
     if context.args:
         try:
             mes = context.args[0]
@@ -353,12 +392,15 @@ async def gastos(update, context: ContextTypes.DEFAULT_TYPE):
     try:
         rows = get_worksheet("Historial").get_all_records()
     except Exception as e:
-        await update.message.reply_text(f"❌ Error al leer historial: {e}")
+        await update.message.reply_text(f"❌ Error al leer Historial: {e}")
         return
 
     filas = [r for r in rows if str(r.get("fecha", "")).startswith(mes)]
     if not filas:
-        await update.message.reply_text(f"Sin compras registradas en {mes}.")
+        await update.message.reply_text(
+            f"Sin compras registradas en {mes}.\n"
+            "Registrá compras con /compra."
+        )
         return
 
     total_bruto  = sum(float(r.get("precio_total",  0)) for r in filas)
@@ -372,41 +414,38 @@ async def gastos(update, context: ContextTypes.DEFAULT_TYPE):
 
     msg = (
         f"📊 Gastos {mes}\n\n"
-        f"  Compras registradas: {len(filas)}\n"
-        f"  Subtotal sin descuentos: ${total_bruto:,.0f}\n"
+        f"  Compras: {len(filas)}\n"
+        f"  Total sin descuentos: ${total_bruto:,.0f}\n"
         f"  Ahorro total: ${total_ahorro:,.0f}\n"
         f"  Total pagado: ${total_final:,.0f}\n\n"
-        f"Por supermercado:\n"
+        "Por supermercado:\n"
     )
     for s, monto in sorted(por_super.items(), key=lambda x: x[1], reverse=True):
         msg += f"  {s}: ${monto:,.0f}\n"
-
     await update.message.reply_text(msg)
 
 
 async def historial_cmd(update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra las últimas N compras. Uso: /historial [N]"""
     n = 10
     if context.args:
         try:
             n = int(context.args[0])
         except ValueError:
             pass
-
     try:
         rows = get_worksheet("Historial").get_all_records()
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        await update.message.reply_text(f"❌ Error al leer Historial: {e}")
         return
 
     if not rows:
-        await update.message.reply_text("No hay compras registradas aún.")
+        await update.message.reply_text("Sin compras registradas aún. Usá /compra para registrar.")
         return
 
     ultimas = rows[-n:][::-1]
     msg = f"🧾 Últimas {len(ultimas)} compras:\n\n"
     for r in ultimas:
-        ahorro = float(r.get("ahorro", 0))
+        ahorro    = float(r.get("ahorro", 0))
         ahorro_txt = f" (−${ahorro:,.0f})" if ahorro > 0 else ""
         msg += (
             f"  {r.get('fecha','')} — {r.get('producto','')} x{r.get('cantidad','')}\n"
@@ -416,116 +455,115 @@ async def historial_cmd(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-# ─── HANDLERS GENERALES ──────────────────────────────────────────
+# ─── AYUDA / START ───────────────────────────────────────────────
 TEXTO_AYUDA = (
     "👋 Hola Francisco! Soy tu asistente personal.\n\n"
 
     "📅 AGENDA\n"
-    "/hoy — Resumen del día actual\n"
-    "/listar — Ver toda la agenda semanal\n"
-    "/agregar <dia> <hora> <min> <mensaje>\n"
-    "   Ejemplo: /agregar lunes 10 0 Tomar medicación\n"
-    "/borrar <dia> <hora> <min>\n"
-    "   Ejemplo: /borrar lunes 10 0\n"
-    "/recargar — Recargar agenda desde Google Sheets\n\n"
+    "/hoy — Resumen del día\n"
+    "/listar — Toda la agenda semanal\n"
+    "/agregar lunes 10 0 Tomar medicación\n"
+    "/borrar lunes 10 0\n"
+    "/recargar — Sincronizar desde Google Sheets\n\n"
 
     "🛒 COMPRAS\n"
-    "/compra <producto> <cantidad> <precio> <super> <billetera>\n"
-    "   Ejemplo: /compra leche 3 1500 Coto Ualá\n"
-    "   → Registra la compra y aplica descuento automático si corresponde\n"
-    "/donde <producto>\n"
-    "   Ejemplo: /donde arroz\n"
-    "   → Muestra el mejor super hoy según descuentos vigentes\n"
-    "/descuentos — Ver todos los descuentos vigentes hoy\n"
-    "/gastos [YYYY-MM]\n"
-    "   Ejemplo: /gastos 2026-05\n"
-    "   → Total gastado, ahorro y desglose por super del mes\n"
-    "/historial [N]\n"
-    "   Ejemplo: /historial 20\n"
-    "   → Últimas N compras registradas (por defecto 10)\n\n"
+    "/compra leche 3 1500 Coto Ualá\n"
+    "   → registra y aplica descuento automático\n"
+    "/donde arroz — mejor super hoy\n"
+    "/descuentos — descuentos vigentes hoy\n"
+    "/gastos — resumen del mes\n"
+    "/gastos 2026-04 — mes específico\n"
+    "/historial — últimas 10 compras\n"
+    "/historial 20 — últimas 20\n\n"
 
-    "💳 DESCUENTOS DISPONIBLES\n"
-    "Lunes    → Coto con Ualá 25% (tope $15.000/mes)\n"
-    "Miércoles→ Día con Mercado Pago 10% (QR, sin tope)\n"
-    "Jueves   → Coto con Brubank 30% ⭐\n"
-    "           Carrefour con Mercado Pago 15% (QR)\n"
-    "           Día con Personal Pay 20%\n"
-    "Viernes  → Coto con Mercado Pago 25% (QR, excluye carnes/verduras)\n"
-    "Sábado   → Carrefour con Mercado Pago 10% (QR)\n"
-    "Último sáb → Carrefour con Ualá 20% (tope $10.000)\n"
-    "Domingo  → Carrefour con Mercado Pago 10% (QR)\n\n"
+    "💳 DESCUENTOS MAYO 2026\n"
+    "Lun → Coto con Ualá 25% (tope $15.000)\n"
+    "Mié → Día con MercadoPago 10%\n"
+    "Jue → Coto con Brubank 30% ⭐\n"
+    "       Carrefour con MercadoPago 15%\n"
+    "       Día con PersonalPay 20%\n"
+    "Vie → Coto con MercadoPago 25%\n"
+    "Sáb → Carrefour con MercadoPago 10%\n"
+    "Último sáb → Carrefour con Ualá 20%\n"
+    "Dom → Carrefour con MercadoPago 10%\n\n"
 
     "🤖 IA\n"
-    "Escribime cualquier cosa sin usar / y te respondo en base a tu\n"
-    "agenda, tus descuentos y tu contexto personal. Por ejemplo:\n"
-    "  • ¿Qué debería estar haciendo ahora?\n"
-    "  • ¿Dónde me conviene hacer las compras esta semana?\n"
-    "  • ¿Cuánto ahorré este mes?\n"
+    "Escribime sin / para hablar con la IA.\n"
+    "Conoce tu agenda, descuentos y contexto.\n"
+    "Ej: ¿Qué debería hacer ahora? ¿Dónde compro esta semana?"
 )
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(TEXTO_AYUDA)
 
-async def test(update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✅ El bot está funcionando.")
-
 async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(TEXTO_AYUDA)
+
+async def test(update, context: ContextTypes.DEFAULT_TYPE):
+    estado_agenda = f"{sum(len(v) for v in MENSAJES_DIA.values())} recordatorios cargados" \
+                    if MENSAJES_DIA else "⚠️ agenda vacía — usá /recargar"
+    await update.message.reply_text(f"✅ Bot funcionando.\n📋 Agenda: {estado_agenda}")
 
 
 # ─── IA ──────────────────────────────────────────────────────────
 def _build_system_prompt():
-    ahora      = datetime.now(tz)
-    dia_es     = dia_hoy_es()
+    ahora   = datetime.now(tz)
+    dia_es  = dia_hoy_es()
     hora_actual = ahora.strftime("%H:%M")
 
     agenda_txt = ""
-    for d in DIAS_SEMANA:
-        msgs = "\n".join(f"    {h:02d}:{m:02d} — {t}" for h, m, t in MENSAJES_DIA.get(d, []))
-        agenda_txt += f"\n{d.upper()}:\n{msgs}\n"
+    if MENSAJES_DIA:
+        for d in DIAS_SEMANA:
+            msgs = "\n".join(f"    {h:02d}:{m:02d} — {t}" for h, m, t in MENSAJES_DIA.get(d, []))
+            agenda_txt += f"\n{d.upper()}:\n{msgs}\n"
+    else:
+        agenda_txt = "\n  (No disponible — error de conexión con Google Sheets)\n"
 
     descuentos_txt = ""
     try:
         filas = descuentos_del_dia(dia_es)
         if filas:
-            for d in sorted(filas, key=lambda r: float(r.get("porcentaje",0)), reverse=True):
-                t = parsear_tope(d.get("tope"))
+            for d in sorted(filas, key=lambda r: float(r.get("porcentaje", 0)), reverse=True):
+                t     = parsear_tope(d.get("tope"))
                 t_txt = f" tope ${t:,.0f}" if t else " sin tope"
                 descuentos_txt += f"  {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%{t_txt}\n"
+        else:
+            descuentos_txt = "  Ninguno para hoy.\n"
     except Exception:
-        pass
+        descuentos_txt = "  (No disponible)\n"
 
     return (
         "Sos el asistente personal de Francisco. Lo ayudás con su rutina diaria y sus compras.\n"
-        "Cuando te dirijas a él, llamalo Francisco.\n\n"
+        "Llamalo siempre Francisco, nunca 'amigo' ni 'usuario'.\n\n"
         f"HOY ES {dia_es.upper()}, SON LAS {hora_actual}.\n\n"
-        f"AGENDA:\n{agenda_txt}\n"
-        f"DESCUENTOS HOY:\n{descuentos_txt if descuentos_txt else '  Ninguno registrado.'}\n\n"
+        f"SU AGENDA:\n{agenda_txt}\n"
+        f"DESCUENTOS HOY:\n{descuentos_txt}\n"
         "SUPERMERCADOS: Coto, Carrefour, Día.\n"
-        "BILLETERAS: Mercado Pago, Brubank, Ualá, Personal Pay, Supervielle, Banco Ciudad, Banco del Sol, Prex.\n\n"
+        "BILLETERAS: MercadoPago, Brubank, Ualá, PersonalPay, Supervielle, Banco Ciudad, Banco del Sol, Prex.\n\n"
+        "Francisco es freelancer en Workana (desarrollo web). Vive con su esposa y su bebé.\n"
         "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos.\n"
         "No inventes información que no esté en la agenda o los descuentos."
     )
 
-historial    = []
+historial_ia  = []
 MAX_HISTORIAL = 30
 
 async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
-    historial.append({"role": "user", "content": texto})
-    if len(historial) > MAX_HISTORIAL:
-        del historial[:-MAX_HISTORIAL]
+    historial_ia.append({"role": "user", "content": texto})
+    if len(historial_ia) > MAX_HISTORIAL:
+        del historial_ia[:-MAX_HISTORIAL]
     await update.message.chat.send_action("typing")
     try:
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "system", "content": _build_system_prompt()}, *historial],
+            messages=[{"role": "system", "content": _build_system_prompt()}, *historial_ia],
             max_tokens=500,
         )
         respuesta = response.choices[0].message.content
-        historial.append({"role": "assistant", "content": respuesta})
-        if len(historial) > MAX_HISTORIAL:
-            del historial[:-MAX_HISTORIAL]
+        historial_ia.append({"role": "assistant", "content": respuesta})
+        if len(historial_ia) > MAX_HISTORIAL:
+            del historial_ia[:-MAX_HISTORIAL]
     except Exception as e:
         respuesta = f"Error al consultar la IA: {e}"
     await update.message.reply_text(respuesta)
@@ -533,9 +571,9 @@ async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── MENSAJES PROGRAMADOS ────────────────────────────────────────
 async def enviar_mensaje(bot, texto):
-    historial.append({"role": "assistant", "content": texto})
-    if len(historial) > MAX_HISTORIAL:
-        del historial[:-MAX_HISTORIAL]
+    historial_ia.append({"role": "assistant", "content": texto})
+    if len(historial_ia) > MAX_HISTORIAL:
+        del historial_ia[:-MAX_HISTORIAL]
     await bot.send_message(chat_id=CHAT_ID, text=texto)
 
 def programar_mensajes(scheduler, bot):
@@ -556,35 +594,35 @@ def programar_mensajes(scheduler, bot):
 
 # ─── MAIN ────────────────────────────────────────────────────────
 async def main():
-    cargar_agenda()
+    ok = cargar_agenda()
+    if not ok:
+        logging.warning(
+            "No se pudo cargar la agenda al inicio. "
+            "Verificá GOOGLE_CREDENTIALS en las variables de entorno."
+        )
 
     app = Application.builder().token(TOKEN).build()
 
-    # Agenda
-    app.add_handler(CommandHandler("start",     start))
-    app.add_handler(CommandHandler("ayuda",     ayuda))
-    app.add_handler(CommandHandler("test",      test))
-    app.add_handler(CommandHandler("hoy",       hoy))
-    app.add_handler(CommandHandler("listar",    listar))
-    app.add_handler(CommandHandler("agregar",   agregar))
-    app.add_handler(CommandHandler("borrar",    borrar))
-    app.add_handler(CommandHandler("recargar",  recargar))
-
-    # Compras
-    app.add_handler(CommandHandler("compra",    compra))
-    app.add_handler(CommandHandler("donde",     donde))
-    app.add_handler(CommandHandler("descuentos",descuentos))
-    app.add_handler(CommandHandler("gastos",    gastos))
-    app.add_handler(CommandHandler("historial", historial_cmd))
-
-    # IA
+    app.add_handler(CommandHandler("start",      start))
+    app.add_handler(CommandHandler("ayuda",      ayuda))
+    app.add_handler(CommandHandler("test",       test))
+    app.add_handler(CommandHandler("hoy",        hoy))
+    app.add_handler(CommandHandler("listar",     listar))
+    app.add_handler(CommandHandler("agregar",    agregar))
+    app.add_handler(CommandHandler("borrar",     borrar))
+    app.add_handler(CommandHandler("recargar",   recargar))
+    app.add_handler(CommandHandler("compra",     compra))
+    app.add_handler(CommandHandler("donde",      donde))
+    app.add_handler(CommandHandler("descuentos", descuentos))
+    app.add_handler(CommandHandler("gastos",     gastos))
+    app.add_handler(CommandHandler("historial",  historial_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
     scheduler = AsyncIOScheduler()
     programar_mensajes(scheduler, app.bot)
     scheduler.start()
 
-    print("✅ Bot iniciado.")
+    logging.info("✅ Bot iniciado.")
     async with app:
         await app.start()
         await app.updater.start_polling()
