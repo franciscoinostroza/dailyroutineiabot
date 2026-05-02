@@ -14,7 +14,6 @@ Configuración:
 import logging
 import os
 from dotenv import load_dotenv
-from telegram import Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -38,20 +37,25 @@ openai_client    = AsyncOpenAI(api_key=os.getenv("OPENAI_KEY"))
 logging.basicConfig(level=logging.INFO)
 tz = pytz.timezone(TIMEZONE)
 
-DIAS_SEMANA = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+DIAS_VALIDOS = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
+DIAS_SEMANA  = DIAS_VALIDOS
 
 # Datos de agenda (se cargan desde Google Sheets)
 MENSAJES_DIA: dict = {}
 RESUMEN: dict = {}
 
 
+def get_worksheet():
+    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
+    gc = gspread.authorize(creds)
+    return gc.open_by_key(SHEET_ID).sheet1
+
+
 def cargar_agenda():
     global MENSAJES_DIA, RESUMEN
     try:
-        scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
-        gc = gspread.authorize(creds)
-        ws = gc.open_by_key(SHEET_ID).sheet1
+        ws = get_worksheet()
         rows = ws.get_all_records()
 
         mensajes: dict = {}
@@ -91,23 +95,127 @@ async def recargar(update, context: ContextTypes.DEFAULT_TYPE):
     if ok:
         await update.message.reply_text(
             "✅ Agenda recargada desde Google Sheets.\n"
-            "Nota: los mensajes automáticos programados requieren reiniciar el bot para actualizarse."
+            "Nota: los recordatorios automáticos del scheduler se actualizan al reiniciar el bot."
         )
     else:
         await update.message.reply_text("❌ Error al recargar la agenda. Revisá los logs.")
 
+async def agregar(update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /agregar <dia> <hora> <minuto> <mensaje>
+    Ejemplo: /agregar lunes 10 0 Tomar medicación
+    """
+    args = context.args
+    if len(args) < 4:
+        await update.message.reply_text(
+            "Uso: /agregar <dia> <hora> <minuto> <mensaje>\n"
+            "Ejemplo: /agregar lunes 10 0 Tomar medicación\n"
+            f"Días válidos: {', '.join(DIAS_VALIDOS)}"
+        )
+        return
+
+    dia    = args[0].lower()
+    if dia not in DIAS_VALIDOS:
+        await update.message.reply_text(f"Día inválido. Usá uno de: {', '.join(DIAS_VALIDOS)}")
+        return
+
+    try:
+        hora   = int(args[1])
+        minuto = int(args[2])
+    except ValueError:
+        await update.message.reply_text("La hora y el minuto deben ser números. Ej: /agregar lunes 10 30 Mensaje")
+        return
+
+    if not (0 <= hora <= 23) or not (0 <= minuto <= 59):
+        await update.message.reply_text("Hora debe ser 0-23 y minuto 0-59.")
+        return
+
+    mensaje = " ".join(args[3:])
+
+    try:
+        ws = get_worksheet()
+        ws.append_row([dia, hora, minuto, mensaje])
+        cargar_agenda()
+        await update.message.reply_text(
+            f"✅ Recordatorio agregado:\n"
+            f"  {dia.capitalize()} a las {hora:02d}:{minuto:02d}\n"
+            f"  {mensaje}"
+        )
+    except Exception as e:
+        logging.error(f"Error al agregar fila en Sheet: {e}")
+        await update.message.reply_text(f"❌ No se pudo agregar el recordatorio: {e}")
+
+async def borrar(update, context: ContextTypes.DEFAULT_TYPE):
+    """Uso: /borrar <dia> <hora> <minuto>
+    Ejemplo: /borrar lunes 10 0
+    """
+    args = context.args
+    if len(args) != 3:
+        await update.message.reply_text(
+            "Uso: /borrar <dia> <hora> <minuto>\n"
+            "Ejemplo: /borrar lunes 10 0"
+        )
+        return
+
+    dia = args[0].lower()
+    try:
+        hora   = int(args[1])
+        minuto = int(args[2])
+    except ValueError:
+        await update.message.reply_text("La hora y el minuto deben ser números.")
+        return
+
+    try:
+        ws = get_worksheet()
+        rows = ws.get_all_values()  # incluye headers en fila 1
+        fila_borrar = None
+        for i, row in enumerate(rows[1:], start=2):  # fila 2 en adelante
+            if (str(row[0]).strip().lower() == dia and
+                    str(row[1]).strip() == str(hora) and
+                    str(row[2]).strip() == str(minuto)):
+                fila_borrar = i
+                break
+
+        if fila_borrar is None:
+            await update.message.reply_text(
+                f"No encontré ningún recordatorio el {dia} a las {hora:02d}:{minuto:02d}."
+            )
+            return
+
+        ws.delete_rows(fila_borrar)
+        cargar_agenda()
+        await update.message.reply_text(
+            f"🗑 Recordatorio eliminado: {dia.capitalize()} {hora:02d}:{minuto:02d}"
+        )
+    except Exception as e:
+        logging.error(f"Error al borrar fila en Sheet: {e}")
+        await update.message.reply_text(f"❌ No se pudo borrar el recordatorio: {e}")
+
+async def listar(update, context: ContextTypes.DEFAULT_TYPE):
+    if not MENSAJES_DIA:
+        await update.message.reply_text("No hay recordatorios cargados.")
+        return
+    texto = "📋 Agenda completa:\n\n"
+    for dia in DIAS_VALIDOS:
+        if dia not in MENSAJES_DIA:
+            continue
+        texto += f"{dia.upper()}:\n"
+        for h, m, msg in sorted(MENSAJES_DIA[dia]):
+            resumen_msg = msg[:60] + "..." if len(msg) > 60 else msg
+            texto += f"  {h:02d}:{m:02d} — {resumen_msg}\n"
+        texto += "\n"
+    await update.message.reply_text(texto)
+
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "👋 Hola Francisco! Soy tu asistente personal de rutina diaria.\n\n"
-        "Esto es lo que puedo hacer por vos:\n\n"
-        "📅 Recordatorios automáticos — Te aviso a cada hora del día según tu agenda semanal.\n\n"
-        "🤖 Asistente con IA — Escribime cualquier cosa y te respondo en base a tu rutina. Por ejemplo:\n"
-        "  • ¿Qué debería estar haciendo ahora?\n"
-        "  • ¿Qué como hoy?\n"
-        "  • ¿Qué me falta hacer?\n\n"
-        "📋 Comandos disponibles:\n"
-        "/hoy — Ver el resumen del día\n"
-        "/recargar — Recargar la agenda desde Google Sheets\n"
+        "📅 Recordatorios automáticos según tu agenda semanal.\n"
+        "🤖 Asistente con IA — escribime cualquier cosa.\n\n"
+        "📋 Comandos:\n"
+        "/hoy — Resumen del día\n"
+        "/listar — Ver toda la agenda\n"
+        "/agregar <dia> <hora> <min> <mensaje> — Agregar recordatorio\n"
+        "/borrar <dia> <hora> <min> — Eliminar recordatorio\n"
+        "/recargar — Recargar agenda desde Sheets\n"
         "/test — Verificar que el bot funciona\n"
         "/ayuda — Ver esta ayuda\n"
     )
@@ -119,11 +227,13 @@ async def test(update, context: ContextTypes.DEFAULT_TYPE):
 async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
     texto = (
         "Bot - Mi Sistema de Vida\n\n"
-        "Comandos disponibles:\n"
-        "/hoy — Ver el resumen del día\n"
-        "/recargar — Recargar agenda desde Google Sheets\n"
-        "/ayuda — Ver esta ayuda\n\n"
-        "El bot te avisa automáticamente en cada horario del día."
+        "Comandos:\n"
+        "/hoy — Resumen del día\n"
+        "/listar — Ver toda la agenda\n"
+        "/agregar lunes 10 0 Mensaje — Agregar recordatorio\n"
+        "/borrar lunes 10 0 — Eliminar recordatorio\n"
+        "/recargar — Recargar agenda desde Sheets\n"
+        "/ayuda — Ver esta ayuda\n"
     )
     await update.message.reply_text(texto)
 
@@ -213,11 +323,14 @@ async def main():
     cargar_agenda()
 
     app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("hoy", hoy))
-    app.add_handler(CommandHandler("ayuda", ayuda))
-    app.add_handler(CommandHandler("test", test))
+    app.add_handler(CommandHandler("start",    start))
+    app.add_handler(CommandHandler("hoy",      hoy))
+    app.add_handler(CommandHandler("listar",   listar))
+    app.add_handler(CommandHandler("agregar",  agregar))
+    app.add_handler(CommandHandler("borrar",   borrar))
     app.add_handler(CommandHandler("recargar", recargar))
+    app.add_handler(CommandHandler("ayuda",    ayuda))
+    app.add_handler(CommandHandler("test",     test))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
     scheduler = AsyncIOScheduler()
