@@ -59,7 +59,13 @@ def get_gc():
         return _gc_cache
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     if GOOGLE_CREDS_JSON:
-        info  = json.loads(GOOGLE_CREDS_JSON)
+        raw = GOOGLE_CREDS_JSON.strip()
+        # Intenta JSON directo; si falla, asume base64
+        try:
+            info = json.loads(raw)
+        except json.JSONDecodeError:
+            import base64
+            info = json.loads(base64.b64decode(raw).decode("utf-8"))
         creds = Credentials.from_service_account_info(info, scopes=scopes)
         logging.info("Google auth: usando GOOGLE_CREDENTIALS (env var)")
     else:
