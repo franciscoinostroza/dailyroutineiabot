@@ -131,10 +131,10 @@ def cargar_agenda():
         RESUMEN      = resumen
         total = sum(len(v) for v in mensajes.values())
         logging.info(f"Agenda cargada: {total} mensajes en {len(mensajes)} días.")
-        return True
+        return True, None
     except Exception as e:
         logging.error(f"Error cargando agenda: {e}")
-        return False
+        return False, str(e)
 
 
 # ─── AGENDA COMMANDS ─────────────────────────────────────────────
@@ -169,7 +169,7 @@ async def listar(update, context: ContextTypes.DEFAULT_TYPE):
 async def recargar(update, context: ContextTypes.DEFAULT_TYPE):
     global _gc_cache
     _gc_cache = None   # forzar reconexión
-    ok = cargar_agenda()
+    ok, err = cargar_agenda()
     if ok:
         dias = len(MENSAJES_DIA)
         total = sum(len(v) for v in MENSAJES_DIA.values())
@@ -178,9 +178,12 @@ async def recargar(update, context: ContextTypes.DEFAULT_TYPE):
             "Los mensajes automáticos se actualizan al reiniciar el bot."
         )
     else:
+        creds_set = "SI" if GOOGLE_CREDS_JSON else "NO"
+        sheet_set = "SI" if SHEET_ID else "NO"
         await update.message.reply_text(
-            "❌ No se pudo conectar con Google Sheets.\n"
-            "Verificá que GOOGLE_CREDENTIALS esté bien configurado en Railway."
+            f"❌ Error conectando con Google Sheets:\n\n{err}\n\n"
+            f"GOOGLE_CREDENTIALS configurado: {creds_set}\n"
+            f"SHEET_ID configurado: {sheet_set}"
         )
 
 async def agregar(update, context: ContextTypes.DEFAULT_TYPE):
@@ -208,7 +211,7 @@ async def agregar(update, context: ContextTypes.DEFAULT_TYPE):
     mensaje = " ".join(args[3:])
     try:
         get_worksheet("Agenda").append_row([dia, hora, minuto, mensaje])
-        cargar_agenda()
+        cargar_agenda()  # ignorar error, ya se guardó en Sheets
         await update.message.reply_text(
             f"✅ Recordatorio agregado:\n  {dia.capitalize()} {hora:02d}:{minuto:02d} — {mensaje}"
         )
@@ -600,10 +603,10 @@ def programar_mensajes(scheduler, bot):
 
 # ─── MAIN ────────────────────────────────────────────────────────
 async def main():
-    ok = cargar_agenda()
+    ok, err = cargar_agenda()
     if not ok:
         logging.warning(
-            "No se pudo cargar la agenda al inicio. "
+            f"No se pudo cargar la agenda al inicio: {err}. "
             "Verificá GOOGLE_CREDENTIALS en las variables de entorno."
         )
 
