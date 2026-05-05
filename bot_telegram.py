@@ -552,39 +552,39 @@ async def evento(update, context: ContextTypes.DEFAULT_TYPE):
 # ─── AYUDA / START ───────────────────────────────────────────────
 TEXTO_AYUDA = (
     "👋 Hola Francisco! Soy tu asistente personal.\n\n"
-
     "📅 AGENDA\n"
     "/hoy — Resumen del día\n"
     "/listar — Toda la agenda semanal\n"
     "/agregar lunes 10 0 Tomar medicación\n"
     "/borrar lunes 10 0\n"
     "/recargar — Sincronizar desde Google Sheets\n\n"
-
+    "🗓 GOOGLE CALENDAR\n"
+    "/evento 2026-05-06 10:00 11:00 Reunión\n"
+    "/agenda_calendar 2026-05-06 — Ver eventos del día\n"
+    "/agenda_calendar — Ver eventos de hoy\n\n"
     "🛒 COMPRAS\n"
     "/compra leche 3 1500 Coto Ualá\n"
-    "   → registra y aplica descuento automático\n"
     "/donde arroz — mejor super hoy\n"
     "/descuentos — descuentos vigentes hoy\n"
     "/gastos — resumen del mes\n"
     "/gastos 2026-04 — mes específico\n"
     "/historial — últimas 10 compras\n"
     "/historial 20 — últimas 20\n\n"
-
     "💳 DESCUENTOS MAYO 2026\n"
-    "Lun → Coto con Ualá 25% (tope $15.000)\n"
+    "Lun → Coto con Ualá 25%\n"
     "Mié → Día con MercadoPago 10%\n"
     "Jue → Coto con Brubank 30% ⭐\n"
-    "       Carrefour con MercadoPago 15%\n"
-    "       Día con PersonalPay 20%\n"
+    "     Carrefour con MercadoPago 15%\n"
+    "     Día con PersonalPay 20%\n"
     "Vie → Coto con MercadoPago 25%\n"
     "Sáb → Carrefour con MercadoPago 10%\n"
     "Último sáb → Carrefour con Ualá 20%\n"
     "Dom → Carrefour con MercadoPago 10%\n\n"
-
     "🤖 IA\n"
     "Escribime sin / para hablar con la IA.\n"
-    "Conoce tu agenda, descuentos y contexto.\n"
-    "Ej: ¿Qué debería hacer ahora? ¿Dónde compro esta semana?"
+    "Ej: ¿Qué debería hacer ahora?\n"
+    "    ¿Dónde compro esta semana?\n"
+    "    ¿Qué eventos tengo mañana?"
 )
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
