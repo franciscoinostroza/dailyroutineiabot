@@ -108,6 +108,23 @@ def crear_evento(titulo, inicio, fin, descripcion=""):
     }
     return service.events().insert(calendarId=os.getenv("CALENDAR_ID", "primary"), body=evento).execute()
 
+def leer_eventos(dia_str):
+    from datetime import datetime, timedelta
+    import pytz
+    tz_local = pytz.timezone(TIMEZONE)
+    fecha = datetime.strptime(dia_str, "%Y-%m-%d")
+    inicio = tz_local.localize(fecha.replace(hour=0, minute=0, second=0))
+    fin = tz_local.localize(fecha.replace(hour=23, minute=59, second=59))
+    service = get_calendar()
+    resultado = service.events().list(
+        calendarId=os.getenv("CALENDAR_ID", "primary"),
+        timeMin=inicio.isoformat(),
+        timeMax=fin.isoformat(),
+        singleEvents=True,
+        orderBy="startTime"
+    ).execute()
+    return resultado.get("items", [])
+
 def dia_hoy_es():
     return DIA_EN_ES[datetime.now(tz).strftime("%A").lower()]
 
@@ -169,6 +186,24 @@ def cargar_agenda():
 
 
 # ─── AGENDA COMMANDS ─────────────────────────────────────────────
+async def agenda_calendar(update, context: ContextTypes.DEFAULT_TYPE):
+    if context.args:
+        dia_str = context.args[0]
+    else:
+        dia_str = datetime.now(tz).strftime("%Y-%m-%d")
+    try:
+        eventos = leer_eventos(dia_str)
+        if not eventos:
+            await update.message.reply_text(f"Sin eventos en el calendario para {dia_str}.")
+            return
+        msg = f"📅 Eventos del {dia_str}:\n\n"
+        for e in eventos:
+            hora = e["start"].get("dateTime", e["start"].get("date", ""))[:16].replace("T", " ")
+            msg += f"• {hora} — {e.get('summary', 'Sin título')}\n"
+        await update.message.reply_text(msg)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
 async def hoy(update, context: ContextTypes.DEFAULT_TYPE):
     dia_es = dia_hoy_es()
     texto  = RESUMEN.get(dia_es)
@@ -678,6 +713,7 @@ async def main():
     app.add_handler(CommandHandler("descuentos", descuentos))
     app.add_handler(CommandHandler("gastos",     gastos))
     app.add_handler(CommandHandler("evento",     evento))
+    app.add_handler(CommandHandler("agenda_calendar", agenda_calendar))
     app.add_handler(CommandHandler("historial",  historial_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
