@@ -106,7 +106,7 @@ def crear_evento(titulo, inicio, fin, descripcion=""):
         "start": {"dateTime": inicio, "timeZone": TIMEZONE},
         "end": {"dateTime": fin, "timeZone": TIMEZONE},
     }
-    return service.events().insert(calendarId=os.getenv("16753b15325cf6178d627d1c130d04011d5e01872f281f4385916e5136d32eb4@group.calendar.google.com", "primary"), body=evento).execute()
+    return service.events().insert(calendarId=os.getenv("CALENDAR_ID", "primary"), body=evento).execute()
 
 def dia_hoy_es():
     return DIA_EN_ES[datetime.now(tz).strftime("%A").lower()]
