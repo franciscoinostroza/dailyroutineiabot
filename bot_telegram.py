@@ -80,8 +80,22 @@ def get_gc():
 
 def get_worksheet(name="Agenda"):
     return get_gc().open_by_key(SHEET_ID).worksheet(name)
+
 def get_calendar():
-    creds = get_gc().auth
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/calendar"
+    ]
+    if GOOGLE_CREDS_JSON:
+        raw = GOOGLE_CREDS_JSON.strip()
+        try:
+            info = json.loads(raw)
+        except json.JSONDecodeError:
+            import base64
+            info = json.loads(base64.b64decode(raw).decode("utf-8"))
+        creds = Credentials.from_service_account_info(info, scopes=scopes)
+    else:
+        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=scopes)
     return build("calendar", "v3", credentials=creds)
 
 def crear_evento(titulo, inicio, fin, descripcion=""):
