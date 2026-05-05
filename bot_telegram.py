@@ -18,6 +18,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
 import gspread
+from googleapiclient.discovery import build
 from google.oauth2.service_account import Credentials
 import pytz
 import asyncio
@@ -57,7 +58,10 @@ def get_gc():
     global _gc_cache
     if _gc_cache is not None:
         return _gc_cache
-    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+    scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/calendar"
+]
     if GOOGLE_CREDS_JSON:
         raw = GOOGLE_CREDS_JSON.strip()
         # Intenta JSON directo; si falla, asume base64
@@ -76,6 +80,19 @@ def get_gc():
 
 def get_worksheet(name="Agenda"):
     return get_gc().open_by_key(SHEET_ID).worksheet(name)
+def get_calendar():
+    creds = get_gc().auth
+    return build("calendar", "v3", credentials=creds)
+
+def crear_evento(titulo, inicio, fin, descripcion=""):
+    service = get_calendar()
+    evento = {
+        "summary": titulo,
+        "description": descripcion,
+        "start": {"dateTime": inicio, "timeZone": TIMEZONE},
+        "end": {"dateTime": fin, "timeZone": TIMEZONE},
+    }
+    return service.events().insert(calendarId="primary", body=evento).execute()
 
 def dia_hoy_es():
     return DIA_EN_ES[datetime.now(tz).strftime("%A").lower()]
@@ -463,6 +480,25 @@ async def historial_cmd(update, context: ContextTypes.DEFAULT_TYPE):
         )
     await update.message.reply_text(msg)
 
+async def evento(update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if len(args) < 4:
+        await update.message.reply_text(
+            "Uso: /evento <fecha> <hora_inicio> <hora_fin> <título>\n"
+            "Ejemplo: /evento 2026-05-10 14:00 16:00 Reunión Workana"
+        )
+        return
+    fecha = args[0]
+    inicio = f"{fecha}T{args[1]}:00"
+    fin = f"{fecha}T{args[2]}:00"
+    titulo = " ".join(args[3:])
+    try:
+        crear_evento(titulo, inicio, fin)
+        await update.message.reply_text(
+            f"✅ Evento creado: {titulo}\n📅 {fecha} {args[1]} - {args[2]}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
 
 # ─── AYUDA / START ───────────────────────────────────────────────
 TEXTO_AYUDA = (
@@ -624,6 +660,7 @@ async def main():
     app.add_handler(CommandHandler("donde",      donde))
     app.add_handler(CommandHandler("descuentos", descuentos))
     app.add_handler(CommandHandler("gastos",     gastos))
+    app.add_handler(CommandHandler("evento",     evento))
     app.add_handler(CommandHandler("historial",  historial_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
