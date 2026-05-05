@@ -187,18 +187,56 @@ def cargar_agenda():
 
 # ─── AGENDA COMMANDS ─────────────────────────────────────────────
 async def agenda_calendar(update, context: ContextTypes.DEFAULT_TYPE):
-    if context.args:
-        dia_str = context.args[0]
+    from datetime import datetime, timedelta
+    
+    hoy = datetime.now(tz).date()
+    
+    DIAS_MAP = {
+        "lunes": 0, "martes": 1, "miercoles": 2, "miércoles": 2,
+        "jueves": 3, "viernes": 4, "sabado": 5, "sábado": 5, "domingo": 6
+    }
+
+    if not context.args:
+        fecha = hoy
     else:
-        dia_str = datetime.now(tz).strftime("%Y-%m-%d")
+        arg = context.args[0].lower()
+        if arg == "hoy":
+            fecha = hoy
+        elif arg in ("mañana", "manana"):
+            fecha = hoy + timedelta(days=1)
+        elif arg in DIAS_MAP:
+            dias_hasta = (DIAS_MAP[arg] - hoy.weekday()) % 7
+            dias_hasta = dias_hasta if dias_hasta > 0 else 7
+            fecha = hoy + timedelta(days=dias_hasta)
+        elif "/" in arg:
+            try:
+                dia, mes = arg.split("/")
+                fecha = hoy.replace(day=int(dia), month=int(mes))
+            except:
+                await update.message.reply_text("Formato inválido. Usá: /agenda hoy, mañana, lunes, o 06/05")
+                return
+        else:
+            try:
+                fecha = datetime.strptime(arg, "%Y-%m-%d").date()
+            except:
+                await update.message.reply_text("Formato inválido. Usá: /agenda hoy, mañana, lunes, o 06/05")
+                return
+
+    dia_str = fecha.strftime("%Y-%m-%d")
+    dia_legible = fecha.strftime("%d/%m/%Y")
+
     try:
         eventos = leer_eventos(dia_str)
         if not eventos:
-            await update.message.reply_text(f"Sin eventos en el calendario para {dia_str}.")
+            await update.message.reply_text(f"Sin eventos en el calendario para el {dia_legible}.")
             return
-        msg = f"📅 Eventos del {dia_str}:\n\n"
+        msg = f"📅 Eventos del {dia_legible}:\n\n"
         for e in eventos:
-            hora = e["start"].get("dateTime", e["start"].get("date", ""))[:16].replace("T", " ")
+            hora = e["start"].get("dateTime", e["start"].get("date", ""))
+            if "T" in hora:
+                hora = hora[11:16]
+            else:
+                hora = "Todo el día"
             msg += f"• {hora} — {e.get('summary', 'Sin título')}\n"
         await update.message.reply_text(msg)
     except Exception as e:
@@ -560,16 +598,18 @@ TEXTO_AYUDA = (
     "/recargar — Sincronizar desde Google Sheets\n\n"
     "🗓 GOOGLE CALENDAR\n"
     "/evento 2026-05-06 10:00 11:00 Reunión\n"
-    "/agenda_calendar 2026-05-06 — Ver eventos del día\n"
-    "/agenda_calendar — Ver eventos de hoy\n\n"
+    "/agenda hoy — Eventos de hoy\n"
+    "/agenda mañana — Eventos de mañana\n"
+    "/agenda lunes — Eventos del próximo lunes\n"
+    "/agenda 06/05 — Eventos de una fecha específica\n\n"
     "🛒 COMPRAS\n"
     "/compra leche 3 1500 Coto Ualá\n"
-    "/donde arroz — mejor super hoy\n"
-    "/descuentos — descuentos vigentes hoy\n"
-    "/gastos — resumen del mes\n"
-    "/gastos 2026-04 — mes específico\n"
-    "/historial — últimas 10 compras\n"
-    "/historial 20 — últimas 20\n\n"
+    "/donde arroz — Mejor super hoy\n"
+    "/descuentos — Descuentos vigentes hoy\n"
+    "/gastos — Resumen del mes\n"
+    "/gastos 2026-04 — Mes específico\n"
+    "/historial — Últimas 10 compras\n"
+    "/historial 20 — Últimas 20\n\n"
     "💳 DESCUENTOS MAYO 2026\n"
     "Lun → Coto con Ualá 25%\n"
     "Mié → Día con MercadoPago 10%\n"
@@ -713,7 +753,7 @@ async def main():
     app.add_handler(CommandHandler("descuentos", descuentos))
     app.add_handler(CommandHandler("gastos",     gastos))
     app.add_handler(CommandHandler("evento",     evento))
-    app.add_handler(CommandHandler("agenda_calendar", agenda_calendar))
+    app.add_handler(CommandHandler("agenda", agenda))
     app.add_handler(CommandHandler("historial",  historial_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
