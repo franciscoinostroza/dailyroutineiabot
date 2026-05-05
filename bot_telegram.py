@@ -193,7 +193,11 @@ def cargar_agenda():
 
 
 # ─── AGENDA COMMANDS ─────────────────────────────────────────────
+# Variable global para guardar los últimos eventos consultados
+_ultimos_eventos = []
+
 async def agenda_calendar(update, context: ContextTypes.DEFAULT_TYPE):
+    global _ultimos_eventos
     from datetime import datetime, timedelta
     
     hoy = datetime.now(tz).date()
@@ -234,41 +238,38 @@ async def agenda_calendar(update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         eventos = leer_eventos(dia_str)
+        _ultimos_eventos = eventos  # guardar para eliminar_evento
         if not eventos:
             await update.message.reply_text(f"Sin eventos en el calendario para el {dia_legible}.")
             return
         msg = f"📅 Eventos del {dia_legible}:\n\n"
-        for e in eventos:
+        for i, e in enumerate(eventos, 1):
             hora = e["start"].get("dateTime", e["start"].get("date", ""))
-            if "T" in hora:
-                hora = hora[11:16]
-            else:
-                hora = "Todo el día"
-            msg += f"• {hora} — {e.get('summary', 'Sin título')}\n"
+            hora = hora[11:16] if "T" in hora else "Todo el día"
+            msg += f"{i}. {hora} — {e.get('summary', 'Sin título')}\n"
+        msg += "\nPara eliminar uno: /eliminar_evento <número>"
         await update.message.reply_text(msg)
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
 async def eliminar_evento_cmd(update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
+    global _ultimos_eventos
+    if not _ultimos_eventos:
         await update.message.reply_text(
-            "Primero usá /agenda hoy (o el día) para ver los eventos.\n"
-            "Luego escribí el número del evento a eliminar:\n"
-            "/eliminar_evento 1"
+            "Primero consultá los eventos con /agenda hoy (o el día que quieras)."
         )
         return
-
-    # Guardar eventos en memoria temporalmente
-    hoy = datetime.now(tz).strftime("%Y-%m-%d")
-    eventos = leer_eventos(hoy)
-    
+    if not context.args:
+        await update.message.reply_text("Indicá el número del evento a eliminar.\nEjemplo: /eliminar_evento 1")
+        return
     try:
         indice = int(context.args[0]) - 1
-        if indice < 0 or indice >= len(eventos):
-            await update.message.reply_text(f"Número inválido. Hay {len(eventos)} eventos hoy.")
+        if indice < 0 or indice >= len(_ultimos_eventos):
+            await update.message.reply_text(f"Número inválido. Hay {len(_ultimos_eventos)} eventos.")
             return
-        titulo = eventos[indice].get("summary", "Sin título")
-        eliminar_evento(eventos[indice]["id"])
+        titulo = _ultimos_eventos[indice].get("summary", "Sin título")
+        eliminar_evento(_ultimos_eventos[indice]["id"])
+        _ultimos_eventos.pop(indice)
         await update.message.reply_text(f"🗑 Evento eliminado: {titulo}")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
