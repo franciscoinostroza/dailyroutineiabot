@@ -753,7 +753,7 @@ async def main():
     app.add_handler(CommandHandler("descuentos", descuentos))
     app.add_handler(CommandHandler("gastos",     gastos))
     app.add_handler(CommandHandler("evento",     evento))
-    app.add_handler(CommandHandler("agenda", agenda))
+    app.add_handler(CommandHandler("agenda", agenda_calendar))
     app.add_handler(CommandHandler("historial",  historial_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
