@@ -125,6 +125,13 @@ def leer_eventos(dia_str):
     ).execute()
     return resultado.get("items", [])
 
+def eliminar_evento(evento_id):
+    service = get_calendar()
+    service.events().delete(
+        calendarId=os.getenv("CALENDAR_ID", "primary"),
+        eventId=evento_id
+    ).execute()
+
 def dia_hoy_es():
     return DIA_EN_ES[datetime.now(tz).strftime("%A").lower()]
 
@@ -239,6 +246,30 @@ async def agenda_calendar(update, context: ContextTypes.DEFAULT_TYPE):
                 hora = "Todo el día"
             msg += f"• {hora} — {e.get('summary', 'Sin título')}\n"
         await update.message.reply_text(msg)
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def eliminar_evento_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "Primero usá /agenda hoy (o el día) para ver los eventos.\n"
+            "Luego escribí el número del evento a eliminar:\n"
+            "/eliminar_evento 1"
+        )
+        return
+
+    # Guardar eventos en memoria temporalmente
+    hoy = datetime.now(tz).strftime("%Y-%m-%d")
+    eventos = leer_eventos(hoy)
+    
+    try:
+        indice = int(context.args[0]) - 1
+        if indice < 0 or indice >= len(eventos):
+            await update.message.reply_text(f"Número inválido. Hay {len(eventos)} eventos hoy.")
+            return
+        titulo = eventos[indice].get("summary", "Sin título")
+        eliminar_evento(eventos[indice]["id"])
+        await update.message.reply_text(f"🗑 Evento eliminado: {titulo}")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
@@ -679,6 +710,7 @@ def _build_system_prompt():
         "Tenés acceso a busquedas en la web"
         "Tenés acceso a Google Sheets con su agenda, descuentos e historial de compras.\n"
         "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos.\n"
+        "Podés crear eventos con /evento, verlos con /agenda y eliminarlos con /eliminar_evento.\n"
         "No inventes información que no esté en la agenda o los descuentos."
     )
 
@@ -754,6 +786,7 @@ async def main():
     app.add_handler(CommandHandler("gastos",     gastos))
     app.add_handler(CommandHandler("evento",     evento))
     app.add_handler(CommandHandler("agenda", agenda_calendar))
+    app.add_handler(CommandHandler("eliminar_evento", eliminar_evento_cmd))
     app.add_handler(CommandHandler("historial",  historial_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
