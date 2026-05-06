@@ -649,19 +649,34 @@ TEXTO_AYUDA = (
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     nombre = update.effective_user.first_name or "ahí"
+    username = update.effective_user.username or "sin username"
 
     if chat_id == str(CHAT_ID):
-        await update.message.reply_text(TEXTO_AYUDA)
-    else:
+        await update.message.reply_text(texto_ayuda(nombre))
+
+    elif chat_id == str(os.getenv("CHAT_ID_ESPOSA", "")):
         botones = InlineKeyboardMarkup([
             [InlineKeyboardButton("📅 Ver eventos de hoy", callback_data="agenda_hoy")],
             [InlineKeyboardButton("📅 Ver eventos de mañana", callback_data="agenda_manana")],
             [InlineKeyboardButton("💳 Descuentos de hoy", callback_data="descuentos_hoy")],
         ])
         await update.message.reply_text(
-            f"👋 Hola {nombre}!\n\n"
-            f"¿Qué querés hacer?",
+            f"👋 Hola {nombre}!\n\n¿Qué querés hacer?",
             reply_markup=botones
+        )
+
+    else:
+        await update.message.reply_text(
+            f"👋 Hola {nombre}!\n\n"
+            f"Este es un bot privado. Tu solicitud fue enviada al administrador."
+        )
+        await context.bot.send_message(
+            chat_id=CHAT_ID,
+            text=f"⚠️ Nueva persona intentó usar el bot:\n\n"
+                 f"Nombre: {nombre}\n"
+                 f"Username: @{username}\n"
+                 f"Chat ID: `{chat_id}`",
+            parse_mode="Markdown"
         )
 
 async def callback_botones(update, context: ContextTypes.DEFAULT_TYPE):
