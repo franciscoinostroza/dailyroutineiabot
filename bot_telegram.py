@@ -13,7 +13,8 @@ import os
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
@@ -621,46 +622,99 @@ async def evento(update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── AYUDA / START ───────────────────────────────────────────────
 TEXTO_AYUDA = (
-    "👋 Hola Francisco! Soy tu asistente personal.\n\n"
-    "📅 AGENDA\n"
-    "/hoy — Resumen del día\n"
-    "/listar — Toda la agenda semanal\n"
-    "/agregar lunes 10 0 Tomar medicación\n"
-    "/borrar lunes 10 0\n"
-    "/recargar — Sincronizar desde Google Sheets\n\n"
-    "🗓 GOOGLE CALENDAR\n"
-    "/evento 2026-05-06 10:00 11:00 Reunión\n"
-    "/agenda hoy — Eventos de hoy\n"
-    "/agenda mañana — Eventos de mañana\n"
-    "/agenda lunes — Eventos del próximo lunes\n"
-    "/agenda 06/05 — Eventos de una fecha específica\n\n"
-    "🛒 COMPRAS\n"
-    "/compra leche 3 1500 Coto Ualá\n"
-    "/donde arroz — Mejor super hoy\n"
-    "/descuentos — Descuentos vigentes hoy\n"
-    "/gastos — Resumen del mes\n"
-    "/gastos 2026-04 — Mes específico\n"
-    "/historial — Últimas 10 compras\n"
-    "/historial 20 — Últimas 20\n\n"
-    "💳 DESCUENTOS MAYO 2026\n"
-    "Lun → Coto con Ualá 25%\n"
-    "Mié → Día con MercadoPago 10%\n"
-    "Jue → Coto con Brubank 30% ⭐\n"
-    "     Carrefour con MercadoPago 15%\n"
-    "     Día con PersonalPay 20%\n"
-    "Vie → Coto con MercadoPago 25%\n"
-    "Sáb → Carrefour con MercadoPago 10%\n"
-    "Último sáb → Carrefour con Ualá 20%\n"
-    "Dom → Carrefour con MercadoPago 10%\n\n"
-    "🤖 IA\n"
-    "Escribime sin / para hablar con la IA.\n"
-    "Ej: ¿Qué debería hacer ahora?\n"
-    "    ¿Dónde compro esta semana?\n"
-    "    ¿Qué eventos tengo mañana?"
+   "👋 Hola {nombre}!\n\n"
+        "📅 AGENDA\n"
+        "/hoy — Resumen del día\n"
+        "/listar — Agenda semanal completa\n"
+        "/agregar lunes 10 0 Texto\n"
+        "/borrar lunes 10 0\n"
+        "/recargar — Sincronizar con Sheets\n\n"
+        "🗓 CALENDAR\n"
+        "/evento 2026-05-06 10:00 11:00 Título\n"
+        "/agenda hoy — Eventos de hoy\n"
+        "/agenda mañana — Eventos de mañana\n"
+        "/agenda lunes — Próximo lunes\n"
+        "/agenda 06/05 — Fecha específica\n"
+        "/eliminar_evento 1 — Eliminar evento\n\n"
+        "🛒 COMPRAS\n"
+        "/compra leche 3 1500 Coto Ualá\n"
+        "/donde arroz — Mejor super hoy\n"
+        "/descuentos — Descuentos de hoy\n"
+        "/gastos — Resumen del mes\n"
+        "/historial — Últimas compras\n\n"
+        "🤖 IA\n"
+        "Escribime cualquier cosa sin /\n"
 )
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(TEXTO_AYUDA)
+    chat_id = str(update.effective_chat.id)
+    nombre = update.effective_user.first_name or "ahí"
+
+    if chat_id == str(CHAT_ID):
+        await update.message.reply_text(TEXTO_AYUDA)
+    else:
+        botones = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📅 Ver eventos de hoy", callback_data="agenda_hoy")],
+            [InlineKeyboardButton("📅 Ver eventos de mañana", callback_data="agenda_manana")],
+            [InlineKeyboardButton("💳 Descuentos de hoy", callback_data="descuentos_hoy")],
+        ])
+        await update.message.reply_text(
+            f"👋 Hola {nombre}!\n\n"
+            f"¿Qué querés hacer?",
+            reply_markup=botones
+        )
+
+async def callback_botones(update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "agenda_hoy":
+        dia_str = datetime.now(tz).strftime("%Y-%m-%d")
+        dia_legible = datetime.now(tz).strftime("%d/%m/%Y")
+        try:
+            eventos = leer_eventos(dia_str)
+            if not eventos:
+                await query.edit_message_text(f"Sin eventos hoy ({dia_legible}).")
+            else:
+                msg = f"📅 Eventos del {dia_legible}:\n\n"
+                for i, e in enumerate(eventos, 1):
+                    hora = e["start"].get("dateTime", "")
+                    hora = hora[11:16] if "T" in hora else "Todo el día"
+                    msg += f"{i}. {hora} — {e.get('summary', 'Sin título')}\n"
+                await query.edit_message_text(msg)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif query.data == "agenda_manana":
+        from datetime import timedelta
+        manana = datetime.now(tz) + timedelta(days=1)
+        dia_str = manana.strftime("%Y-%m-%d")
+        dia_legible = manana.strftime("%d/%m/%Y")
+        try:
+            eventos = leer_eventos(dia_str)
+            if not eventos:
+                await query.edit_message_text(f"Sin eventos mañana ({dia_legible}).")
+            else:
+                msg = f"📅 Eventos del {dia_legible}:\n\n"
+                for i, e in enumerate(eventos, 1):
+                    hora = e["start"].get("dateTime", "")
+                    hora = hora[11:16] if "T" in hora else "Todo el día"
+                    msg += f"{i}. {hora} — {e.get('summary', 'Sin título')}\n"
+                await query.edit_message_text(msg)
+        except Exception as e:
+            await query.edit_message_text(f"❌ Error: {e}")
+
+    elif query.data == "descuentos_hoy":
+        dia_es = dia_hoy_es()
+        filas = descuentos_del_dia(dia_es)
+        if not filas:
+            await query.edit_message_text(f"Sin descuentos para hoy ({dia_es}).")
+        else:
+            filas_ord = sorted(filas, key=lambda r: float(r.get("porcentaje", 0)), reverse=True)
+            msg = f"💳 Descuentos del {dia_es}:\n\n"
+            for d in filas_ord:
+                msg += f"⭐ {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%\n"
+            await query.edit_message_text(msg)
 
 async def ayuda(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(TEXTO_AYUDA)
@@ -788,6 +842,7 @@ async def main():
     app.add_handler(CommandHandler("evento",     evento))
     app.add_handler(CommandHandler("agenda", agenda_calendar))
     app.add_handler(CommandHandler("eliminar_evento", eliminar_evento_cmd))
+    app.add_handler(CallbackQueryHandler(callback_botones))
     app.add_handler(CommandHandler("historial",  historial_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
