@@ -621,8 +621,9 @@ async def evento(update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error: {e}")
 
 # ─── AYUDA / START ───────────────────────────────────────────────
-TEXTO_AYUDA = (
-   "👋 Hola {nombre}!\n\n"
+def texto_ayuda(nombre):
+    return (
+        f"👋 Hola {nombre}!\n\n"
         "📅 AGENDA\n"
         "/hoy — Resumen del día\n"
         "/listar — Agenda semanal completa\n"
@@ -634,7 +635,6 @@ TEXTO_AYUDA = (
         "/agenda hoy — Eventos de hoy\n"
         "/agenda mañana — Eventos de mañana\n"
         "/agenda lunes — Próximo lunes\n"
-        "/agenda 06/05 — Fecha específica\n"
         "/eliminar_evento 1 — Eliminar evento\n\n"
         "🛒 COMPRAS\n"
         "/compra leche 3 1500 Coto Ualá\n"
@@ -644,7 +644,7 @@ TEXTO_AYUDA = (
         "/historial — Últimas compras\n\n"
         "🤖 IA\n"
         "Escribime cualquier cosa sin /\n"
-)
+    )
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
