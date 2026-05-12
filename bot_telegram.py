@@ -218,6 +218,8 @@ def get_worksheet(name="Agenda"):
     return get_gc().open_by_key(SHEET_ID).worksheet(name)
 
 def get_calendar():
+    cal_id = os.getenv("CALENDAR_ID", "primary")
+    logging.info(f"Inicializando Google Calendar API para calendario: {cal_id}")
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/calendar"
@@ -236,13 +238,17 @@ def get_calendar():
 
 def crear_evento(titulo, inicio, fin, descripcion=""):
     service = get_calendar()
+    cal_id = os.getenv("CALENDAR_ID", "primary")
     evento = {
         "summary": titulo,
         "description": descripcion,
         "start": {"dateTime": inicio, "timeZone": TIMEZONE},
         "end": {"dateTime": fin, "timeZone": TIMEZONE},
     }
-    return service.events().insert(calendarId=os.getenv("CALENDAR_ID", "primary"), body=evento).execute()
+    logging.info(f"Creando evento en calendario {cal_id}: {titulo} {inicio}-{fin}")
+    resultado = service.events().insert(calendarId=cal_id, body=evento).execute()
+    logging.info(f"Evento creado OK: {resultado.get('id')}")
+    return resultado
 
 def leer_eventos(dia_str):
     from datetime import datetime, timedelta
@@ -1112,8 +1118,10 @@ def _build_system_prompt():
         "Podés usar herramientas para: agregar/quitar recordatorios, registrar compras con descuentos,\n"
         "agregar pagos/suscripciones, marcar pagos como pagados, ver agenda/descuentos/gastos/pagos,\n"
         "y crear eventos en el calendario.\n"
-        "Siempre que Francisco te pida hacer algo, usá la herramienta correspondiente sin pedir confirmación.\n"
-        "Después de ejecutar una herramienta, confirmá brevemente lo que hiciste.\n"
+        "USÁ LAS HERRAMIENTAS. Cuando Francisco te pida agendar, crear evento, registrar compra,\n"
+        "agregar pago, o cualquier acción — llamá la herramienta correspondiente. No finjas que lo hiciste.\n"
+        "Ejecutá la herramienta primero, luego confirmá el resultado.\n"
+        "Si Francisco dice 'agendame', 'anotame', 'creame un evento', 'registrame', etc. → usá la herramienta YA.\n"
         "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos."
     )
 
@@ -1323,7 +1331,12 @@ async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
                 args = json.loads(tc.function.arguments)
             except json.JSONDecodeError:
                 args = {}
-            resultado = await _ejecutar_herramienta(nombre, args)
+            logging.info(f"IA llamó herramienta: {nombre}({json.dumps(args, ensure_ascii=False)})")
+            try:
+                resultado = await _ejecutar_herramienta(nombre, args)
+            except Exception as e:
+                resultado = f"Error al ejecutar {nombre}: {e}"
+                logging.error(f"Error en herramienta {nombre}: {e}", exc_info=True)
             mensajes_api.append({
                 "role": "tool",
                 "tool_call_id": tc.id,
