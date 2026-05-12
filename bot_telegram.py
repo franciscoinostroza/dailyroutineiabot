@@ -52,6 +52,141 @@ DIA_EN_ES    = {
 MENSAJES_DIA: dict = {}
 RESUMEN:      dict = {}
 
+# ─── HERRAMIENTAS PARA LA IA ─────────────────────────────────────
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "agregar_recordatorio",
+            "description": "Agrega un recordatorio a la agenda diaria de Francisco",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dia": {"type": "string", "enum": ["lunes","martes","miercoles","jueves","viernes","sabado","domingo"]},
+                    "hora": {"type": "integer", "minimum": 0, "maximum": 23},
+                    "minuto": {"type": "integer", "minimum": 0, "maximum": 59},
+                    "mensaje": {"type": "string"}
+                },
+                "required": ["dia", "hora", "minuto", "mensaje"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "borrar_recordatorio",
+            "description": "Elimina un recordatorio de la agenda",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dia": {"type": "string", "enum": ["lunes","martes","miercoles","jueves","viernes","sabado","domingo"]},
+                    "hora": {"type": "integer", "minimum": 0, "maximum": 23},
+                    "minuto": {"type": "integer", "minimum": 0, "maximum": 59}
+                },
+                "required": ["dia", "hora", "minuto"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "registrar_compra",
+            "description": "Registra una compra con supermercado y billetera. El bot calcula automáticamente los descuentos disponibles hoy.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "producto": {"type": "string"},
+                    "cantidad": {"type": "number"},
+                    "precio_unitario": {"type": "number"},
+                    "supermercado": {"type": "string", "enum": ["Coto", "Carrefour", "Día"]},
+                    "billetera": {"type": "string", "enum": ["MercadoPago", "Brubank", "Ualá", "PersonalPay", "Supervielle", "Banco Ciudad", "Banco del Sol", "Prex"]}
+                },
+                "required": ["producto", "cantidad", "precio_unitario", "supermercado", "billetera"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "agregar_pago",
+            "description": "Agrega un pago recurrente o suscripción al sistema de recordatorios",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string"},
+                    "dia_vencimiento": {"type": "integer", "minimum": 1, "maximum": 31},
+                    "monto": {"type": "number"},
+                    "categoria": {"type": "string", "description": "Opcional"}
+                },
+                "required": ["nombre", "dia_vencimiento", "monto"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "marcar_pago_pagado",
+            "description": "Marca un pago como pagado en el mes actual para que no siga apareciendo en recordatorios",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string"}
+                },
+                "required": ["nombre"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_pagos",
+            "description": "Muestra todos los pagos y suscripciones registrados y su estado",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_gastos",
+            "description": "Muestra el resumen de gastos del mes actual con totales y ahorros",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_descuentos",
+            "description": "Muestra los descuentos disponibles hoy en supermercados con billeteras",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_agenda",
+            "description": "Muestra la agenda semanal completa de Francisco con todos los recordatorios",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "crear_evento_calendario",
+            "description": "Crea un evento en Google Calendar de Francisco",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fecha": {"type": "string", "description": "YYYY-MM-DD"},
+                    "hora_inicio": {"type": "string", "description": "HH:MM"},
+                    "hora_fin": {"type": "string", "description": "HH:MM"},
+                    "titulo": {"type": "string"}
+                },
+                "required": ["fecha", "hora_inicio", "hora_fin", "titulo"]
+            }
+        }
+    }
+]
+
 # ─── CONEXIÓN SHEETS (con cache) ─────────────────────────────────
 _gc_cache = None
 
@@ -973,16 +1108,182 @@ def _build_system_prompt():
         "SUPERMERCADOS: Coto, Carrefour, Día.\n"
         "BILLETERAS: MercadoPago, Brubank, Ualá, PersonalPay, Supervielle, Banco Ciudad, Banco del Sol, Prex.\n\n"
         "Francisco es freelancer en Workana (desarrollo web). Vive con su esposa y su bebé.\n"
-        "Tenés acceso a Google Calendar de Francisco para crear eventos con el comando /evento.\n"
-        "Tenés acceso a busquedas en la web"
-        "Tenés acceso a Google Sheets con su agenda, descuentos e historial de compras.\n"
-        "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos.\n"
-        "Podés crear eventos con /evento, verlos con /agenda y eliminarlos con /eliminar_evento.\n"
-        "No inventes información que no esté en la agenda o los descuentos."
+        "Tenés acceso a Google Calendar y Google Sheets de Francisco.\n"
+        "Podés usar herramientas para: agregar/quitar recordatorios, registrar compras con descuentos,\n"
+        "agregar pagos/suscripciones, marcar pagos como pagados, ver agenda/descuentos/gastos/pagos,\n"
+        "y crear eventos en el calendario.\n"
+        "Siempre que Francisco te pida hacer algo, usá la herramienta correspondiente sin pedir confirmación.\n"
+        "Después de ejecutar una herramienta, confirmá brevemente lo que hiciste.\n"
+        "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos."
     )
 
 historial_ia  = []
 MAX_HISTORIAL = 30
+
+async def _ejecutar_herramienta(nombre, args):
+    if nombre == "agregar_recordatorio":
+        dia = args["dia"].lower()
+        if dia not in DIAS_VALIDOS:
+            return f"Día inválido: {dia}. Usá lunes a domingo."
+        get_worksheet("Agenda").append_row([dia, args["hora"], args["minuto"], args["mensaje"]])
+        cargar_agenda()
+        return f"Recordatorio agregado: {dia} {args['hora']:02d}:{args['minuto']:02d} - {args['mensaje']}"
+
+    elif nombre == "borrar_recordatorio":
+        dia = args["dia"].lower()
+        ws = get_worksheet("Agenda")
+        rows = ws.get_all_values()
+        fila = next(
+            (i + 2 for i, r in enumerate(rows[1:])
+             if r[0].lower() == dia and str(r[1]) == str(args["hora"]) and str(r[2]) == str(args["minuto"])),
+            None
+        )
+        if fila is None:
+            return f"No se encontró recordatorio el {dia} a las {args['hora']:02d}:{args['minuto']:02d}."
+        ws.delete_rows(fila)
+        cargar_agenda()
+        return f"Recordatorio eliminado: {dia} {args['hora']:02d}:{args['minuto']:02d}"
+
+    elif nombre == "registrar_compra":
+        producto = args["producto"]
+        cantidad = float(args["cantidad"])
+        precio_unit = float(args["precio_unitario"])
+        supermercado = args["supermercado"]
+        billetera = args["billetera"]
+        fecha = datetime.now(tz).strftime("%Y-%m-%d")
+        precio_total = cantidad * precio_unit
+        dia_es = dia_hoy_es()
+
+        descuento_row = next(
+            (d for d in descuentos_del_dia(dia_es)
+             if supermercado.lower() in str(d.get("supermercado", "")).lower()
+             and billetera.lower() in str(d.get("billetera", "")).lower()),
+            None
+        )
+        pct = ahorro = 0.0
+        tope_aviso = ""
+        if descuento_row:
+            pct = float(descuento_row.get("porcentaje", 0))
+            tope = parsear_tope(descuento_row.get("tope"))
+            ahorro_bruto = precio_total * pct / 100
+            ahorro = min(ahorro_bruto, tope) if tope else ahorro_bruto
+            tope_aviso = f" (tope ${tope:,.0f})" if tope and ahorro < ahorro_bruto else ""
+
+        precio_final = precio_total - ahorro
+        get_worksheet("Historial").append_row([
+            fecha, producto, cantidad, precio_unit, precio_total,
+            supermercado, billetera, pct, round(ahorro, 2), round(precio_final, 2)
+        ])
+        if descuento_row:
+            return (
+                f"Compra registrada: {producto} x{cantidad:g} a ${precio_unit:,.0f} c/u\n"
+                f"Total bruto: ${precio_total:,.0f}\n"
+                f"Descuento {supermercado}+{billetera}: {pct:g}%{tope_aviso}\n"
+                f"Ahorro: ${ahorro:,.0f}\n"
+                f"Total final: ${precio_final:,.0f}"
+            )
+        else:
+            return (
+                f"Compra registrada: {producto} x{cantidad:g} a ${precio_unit:,.0f} c/u\n"
+                f"Total: ${precio_total:,.0f}\n"
+                f"Sin descuento hoy para {supermercado}+{billetera}."
+            )
+
+    elif nombre == "agregar_pago":
+        nombre_pago = args["nombre"]
+        dia_venc = int(args["dia_vencimiento"])
+        monto = float(args["monto"])
+        categoria = args.get("categoria", "")
+        if not (1 <= dia_venc <= 31):
+            return f"Día de vencimiento inválido: {dia_venc}. Debe ser 1-31."
+        get_worksheet_pagos().append_row([nombre_pago, monto, dia_venc, categoria, "si", ""])
+        return f"Pago agregado: {nombre_pago} — ${monto:,.0f} vence el día {dia_venc} de cada mes."
+
+    elif nombre == "marcar_pago_pagado":
+        nombre_pago = args["nombre"]
+        mes_actual = datetime.now(tz).strftime("%Y-%m")
+        ws = get_worksheet_pagos()
+        rows = ws.get_all_values()
+        fila = next((i+2 for i, r in enumerate(rows[1:]) if r[0].lower() == nombre_pago.lower()), None)
+        if fila is None:
+            return f"No se encontró el pago '{nombre_pago}'."
+        ws.update(f"F{fila}", mes_actual)
+        return f"{nombre_pago} marcado como pagado ({mes_actual})."
+
+    elif nombre == "ver_pagos":
+        pagos = leer_pagos(solo_activos=False)
+        if not pagos:
+            return "No hay pagos registrados."
+        lineas = ["Pagos y suscripciones:"]
+        for p in sorted(pagos, key=lambda r: int(r.get("dia_vencimiento", 0))):
+            activo = "✅" if str(p.get("activo", "si")).lower() != "no" else "❌"
+            pagado = f" (pagado {p['ultimo_mes']})" if p.get("ultimo_mes") else ""
+            lineas.append(f"{activo} {p['nombre']} — ${float(p.get('monto',0)):,.0f} — día {p.get('dia_vencimiento','?')}{pagado}")
+        return "\n".join(lineas)
+
+    elif nombre == "ver_gastos":
+        mes = datetime.now(tz).strftime("%Y-%m")
+        try:
+            rows = get_worksheet("Historial").get_all_records()
+        except:
+            return "Error al leer el historial de compras."
+        filas = [r for r in rows if str(r.get("fecha", "")).startswith(mes)]
+        if not filas:
+            return f"Sin compras en {mes}."
+        total_bruto = sum(float(r.get("precio_total", 0)) for r in filas)
+        total_ahorro = sum(float(r.get("ahorro", 0)) for r in filas)
+        total_final = sum(float(r.get("precio_final", 0)) for r in filas)
+        por_super = {}
+        for r in filas:
+            s = r.get("supermercado", "Otro")
+            por_super[s] = por_super.get(s, 0.0) + float(r.get("precio_final", 0))
+        lineas = [
+            f"Gastos {mes}:",
+            f"  Compras: {len(filas)}",
+            f"  Total bruto: ${total_bruto:,.0f}",
+            f"  Ahorro: ${total_ahorro:,.0f}",
+            f"  Total pagado: ${total_final:,.0f}",
+            "Por supermercado:"
+        ]
+        for s, m in sorted(por_super.items(), key=lambda x: x[1], reverse=True):
+            lineas.append(f"  {s}: ${m:,.0f}")
+        return "\n".join(lineas)
+
+    elif nombre == "ver_descuentos":
+        dia_es = dia_hoy_es()
+        filas = descuentos_del_dia(dia_es)
+        if not filas:
+            return f"Sin descuentos registrados para hoy ({dia_es})."
+        filas_ord = sorted(filas, key=lambda r: float(r.get("porcentaje", 0)), reverse=True)
+        lineas = [f"Descuentos de hoy ({dia_es}):"]
+        for d in filas_ord:
+            t = parsear_tope(d.get("tope"))
+            t_txt = f" (tope ${t:,.0f})" if t else ""
+            lineas.append(f"  {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%{t_txt}")
+        return "\n".join(lineas)
+
+    elif nombre == "ver_agenda":
+        if not MENSAJES_DIA:
+            return "La agenda está vacía."
+        lineas = ["Agenda semanal:"]
+        for dia in DIAS_VALIDOS:
+            if dia not in MENSAJES_DIA:
+                continue
+            lineas.append(f"{dia.upper()}:")
+            for h, m, msg in sorted(MENSAJES_DIA[dia]):
+                lineas.append(f"  {h:02d}:{m:02d} — {msg}")
+        return "\n".join(lineas)
+
+    elif nombre == "crear_evento_calendario":
+        fecha = args["fecha"]
+        inicio = f"{fecha}T{args['hora_inicio']}:00"
+        fin = f"{fecha}T{args['hora_fin']}:00"
+        titulo = args["titulo"]
+        crear_evento(titulo, inicio, fin)
+        return f"Evento creado: {titulo} — {fecha} {args['hora_inicio']}-{args['hora_fin']}"
+
+    return f"Herramienta desconocida: {nombre}"
+
 
 async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
@@ -990,19 +1291,46 @@ async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
     if len(historial_ia) > MAX_HISTORIAL:
         del historial_ia[:-MAX_HISTORIAL]
     await update.message.chat.send_action("typing")
-    try:
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "system", "content": _build_system_prompt()}, *historial_ia],
-            max_tokens=500,
-        )
-        respuesta = response.choices[0].message.content
-        historial_ia.append({"role": "assistant", "content": respuesta})
-        if len(historial_ia) > MAX_HISTORIAL:
-            del historial_ia[:-MAX_HISTORIAL]
-    except Exception as e:
-        respuesta = f"Error al consultar la IA: {e}"
-    await update.message.reply_text(respuesta)
+
+    mensajes_api = [{"role": "system", "content": _build_system_prompt()}] + historial_ia
+    for _ in range(5):  # máximo 5 iteraciones de tool calls
+        try:
+            response = await openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=mensajes_api,
+                tools=TOOLS,
+                tool_choice="auto",
+                max_tokens=500,
+            )
+        except Exception as e:
+            await update.message.reply_text(f"Error al consultar la IA: {e}")
+            return
+
+        msg = response.choices[0].message
+
+        if not msg.tool_calls:
+            respuesta = msg.content or "Listo."
+            historial_ia.append({"role": "assistant", "content": respuesta})
+            if len(historial_ia) > MAX_HISTORIAL:
+                del historial_ia[:-MAX_HISTORIAL]
+            await update.message.reply_text(respuesta)
+            return
+
+        mensajes_api.append(msg)
+        for tc in msg.tool_calls:
+            nombre = tc.function.name
+            try:
+                args = json.loads(tc.function.arguments)
+            except json.JSONDecodeError:
+                args = {}
+            resultado = await _ejecutar_herramienta(nombre, args)
+            mensajes_api.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": resultado
+            })
+
+    await update.message.reply_text("Hmm, hice varias cosas. ¿Necesitás algo más?")
 
 
 # ─── MENSAJES PROGRAMADOS ────────────────────────────────────────
