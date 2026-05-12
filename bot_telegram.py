@@ -165,6 +165,81 @@ def descuentos_del_dia(dia_es: str) -> list:
     return resultado
 
 
+# ─── PAGOS / SUSCRIPCIONES ───────────────────────────────────────
+def get_worksheet_pagos():
+    gc = get_gc()
+    sh = gc.open_by_key(SHEET_ID)
+    try:
+        return sh.worksheet("Pagos")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet("Pagos", rows=100, cols=10)
+        ws.append_row(["nombre", "monto", "dia_vencimiento", "categoria", "activo", "ultimo_mes"])
+        logging.info("Hoja 'Pagos' creada automáticamente.")
+        return ws
+
+def leer_pagos(solo_activos=True):
+    try:
+        rows = get_worksheet_pagos().get_all_records()
+    except Exception as e:
+        logging.error(f"Error leyendo Pagos: {e}")
+        return []
+    if solo_activos:
+        rows = [r for r in rows if str(r.get("activo", "si")).lower() != "no"]
+    return rows
+
+def _proxima_fecha_vencimiento(dia_venc):
+    hoy = datetime.now(tz)
+    from calendar import monthrange
+    for offset in (0, 1):
+        mes = hoy.month + offset
+        ano = hoy.year
+        if mes > 12:
+            mes, ano = 1, ano + 1
+        max_dia = monthrange(ano, mes)[1]
+        dia = min(dia_venc, max_dia)
+        fecha = hoy.replace(year=ano, month=mes, day=dia)
+        if fecha.date() >= hoy.date():
+            return fecha
+    return None
+
+def pagos_proximos(dias_ventana=3):
+    hoy = datetime.now(tz)
+    mes_actual = hoy.strftime("%Y-%m")
+    pagos = leer_pagos(solo_activos=True)
+    resultado = []
+    for p in pagos:
+        if str(p.get("ultimo_mes", "")) == mes_actual:
+            continue
+        dia_venc = int(p.get("dia_vencimiento", 0))
+        if dia_venc <= 0:
+            continue
+        fecha_venc = _proxima_fecha_vencimiento(dia_venc)
+        if fecha_venc is None:
+            continue
+        dias_faltan = (fecha_venc.date() - hoy.date()).days
+        if 0 <= dias_faltan <= dias_ventana:
+            resultado.append({**p, "dias_faltan": dias_faltan})
+    return sorted(resultado, key=lambda x: x["dias_faltan"])
+
+async def notificar_pagos(bot):
+    try:
+        proximos = pagos_proximos()
+        if not proximos:
+            return
+        msg = "📅 Recordatorio de pagos:\n\n"
+        for p in proximos:
+            dias = p["dias_faltan"]
+            icono = "🔴" if dias == 0 else "🟡" if dias <= 2 else "🟢"
+            label = "HOY" if dias == 0 else "mañana" if dias == 1 else f"en {dias} días"
+            msg += f"{icono} {p['nombre']} — ${float(p.get('monto',0)):,.0f} — {label}\n"
+        await bot.send_message(chat_id=CHAT_ID, text=msg)
+        esposa = os.getenv("CHAT_ID_ESPOSA", "")
+        if esposa:
+            await bot.send_message(chat_id=esposa, text=msg)
+    except Exception as e:
+        logging.error(f"Error en notificar_pagos: {e}")
+
+
 # ─── CARGA DE AGENDA ─────────────────────────────────────────────
 def cargar_agenda():
     global MENSAJES_DIA, RESUMEN
@@ -620,6 +695,122 @@ async def evento(update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {e}")
 
+# ─── PAGOS COMMANDS ──────────────────────────────────────────────
+async def pago(update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text(
+            "💳 PAGOS Y SUSCRIPCIONES\n\n"
+            "/pago agregar <nombre> <dia> <monto> [categoria]\n"
+            "/pago listar — Ver todos\n"
+            "/pago borrar <nombre>\n"
+            "/pago pagado <nombre> — Marcar como pagado este mes\n"
+            "/pagos — Próximos vencimientos\n\n"
+            "Ejemplo: /pago agregar Netflix 15 3200 streaming"
+        )
+        return
+    sub = context.args[0].lower()
+    if sub == "agregar":
+        await pago_agregar(update, context)
+    elif sub == "listar":
+        await pago_listar(update, context)
+    elif sub == "borrar":
+        await pago_borrar(update, context)
+    elif sub == "pagado":
+        await pago_pagado(update, context)
+    else:
+        await update.message.reply_text("Subcomando no reconocido. Usá: agregar, listar, borrar, pagado")
+
+async def pago_agregar(update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if len(args) < 4:
+        await update.message.reply_text(
+            "Uso: /pago agregar <nombre> <dia> <monto> [categoria]\n"
+            "Ejemplo: /pago agregar Netflix 15 3200 streaming"
+        )
+        return
+    nombre = args[1]
+    try:
+        dia_venc = int(args[2])
+        monto = float(args[3])
+    except ValueError:
+        await update.message.reply_text("Día y monto deben ser números.")
+        return
+    if not (1 <= dia_venc <= 31):
+        await update.message.reply_text("Día de vencimiento: 1 a 31.")
+        return
+    categoria = " ".join(args[4:]) if len(args) > 4 else ""
+    try:
+        get_worksheet_pagos().append_row([nombre, monto, dia_venc, categoria, "si", ""])
+        await update.message.reply_text(f"✅ Pago agregado: {nombre} — ${monto:,.0f} el día {dia_venc}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def pago_listar(update, context: ContextTypes.DEFAULT_TYPE):
+    pagos = leer_pagos(solo_activos=False)
+    if not pagos:
+        await update.message.reply_text("No hay pagos registrados. Agregá uno con /pago agregar")
+        return
+    msg = "💳 Pagos y suscripciones:\n\n"
+    for p in sorted(pagos, key=lambda r: int(r.get("dia_vencimiento", 0))):
+        activo = "✅" if str(p.get("activo", "si")).lower() != "no" else "❌"
+        mes_pagado = str(p.get("ultimo_mes", ""))
+        estado = f" (pagado {mes_pagado})" if mes_pagado else ""
+        cat = f" [{p.get('categoria', '')}]" if p.get("categoria") else ""
+        monto = float(p.get("monto", 0))
+        msg += f"{activo} {p['nombre']}{cat} — ${monto:,.0f} — vence día {p.get('dia_vencimiento','?')}{estado}\n"
+    await update.message.reply_text(msg)
+
+async def pago_borrar(update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Uso: /pago borrar <nombre>")
+        return
+    nombre = " ".join(args[1:])
+    try:
+        ws = get_worksheet_pagos()
+        rows = ws.get_all_values()
+        fila = next((i+2 for i, r in enumerate(rows[1:]) if r[0].lower() == nombre.lower()), None)
+        if fila is None:
+            await update.message.reply_text(f"No encontré el pago '{nombre}'.")
+            return
+        ws.delete_rows(fila)
+        await update.message.reply_text(f"🗑 Pago eliminado: {nombre}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def pago_pagado(update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if len(args) < 2:
+        await update.message.reply_text("Uso: /pago pagado <nombre>")
+        return
+    nombre = " ".join(args[1:])
+    mes_actual = datetime.now(tz).strftime("%Y-%m")
+    try:
+        ws = get_worksheet_pagos()
+        rows = ws.get_all_values()
+        fila = next((i+2 for i, r in enumerate(rows[1:]) if r[0].lower() == nombre.lower()), None)
+        if fila is None:
+            await update.message.reply_text(f"No encontré el pago '{nombre}'.")
+            return
+        ws.update(f"F{fila}", mes_actual)
+        await update.message.reply_text(f"✅ {nombre} marcado como pagado ({mes_actual}).")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
+async def pagos_proximos_cmd(update, context: ContextTypes.DEFAULT_TYPE):
+    proximos = pagos_proximos()
+    if not proximos:
+        await update.message.reply_text("Ningún pago próximo a vencer. ¡Todo al día!")
+        return
+    msg = "📅 Próximos vencimientos:\n\n"
+    for p in proximos:
+        dias = p["dias_faltan"]
+        icono = "🔴" if dias == 0 else "🟡" if dias <= 2 else "🟢"
+        label = "HOY" if dias == 0 else "mañana" if dias == 1 else f"en {dias} días"
+        msg += f"{icono} {p['nombre']} — ${float(p.get('monto',0)):,.0f} — {label} (día {p.get('dia_vencimiento','?')})\n"
+    await update.message.reply_text(msg)
+
+
 # ─── AYUDA / START ───────────────────────────────────────────────
 def texto_ayuda(nombre):
     return (
@@ -636,6 +827,12 @@ def texto_ayuda(nombre):
         "/agenda mañana — Eventos de mañana\n"
         "/agenda lunes — Próximo lunes\n"
         "/eliminar_evento 1 — Eliminar evento\n\n"
+        "💳 PAGOS\n"
+        "/pago agregar Netflix 15 3200\n"
+        "/pago listar — Ver todos\n"
+        "/pago pagado Netflix\n"
+        "/pagos — Próximos vencimientos\n"
+        "/pago borrar Netflix\n\n"
         "🛒 COMPRAS\n"
         "/compra leche 3 1500 Coto Ualá\n"
         "/donde arroz — Mejor super hoy\n"
@@ -859,10 +1056,18 @@ async def main():
     app.add_handler(CommandHandler("eliminar_evento", eliminar_evento_cmd))
     app.add_handler(CallbackQueryHandler(callback_botones))
     app.add_handler(CommandHandler("historial",  historial_cmd))
+    app.add_handler(CommandHandler("pago",       pago))
+    app.add_handler(CommandHandler("pagos",      pagos_proximos_cmd))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
     scheduler = AsyncIOScheduler()
     programar_mensajes(scheduler, app.bot)
+    scheduler.add_job(
+        notificar_pagos,
+        CronTrigger(hour=9, minute=0, timezone=tz),
+        args=[app.bot],
+        id="notificar_pagos"
+    )
     scheduler.start()
 
     logging.info("✅ Bot iniciado.")
