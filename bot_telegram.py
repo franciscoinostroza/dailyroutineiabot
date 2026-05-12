@@ -172,14 +172,14 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "crear_evento_calendario",
-            "description": "Crea un evento en Google Calendar. Usala CADA VEZ que Francisco pida agendar, crear, anotar o programar un evento, reunión, cita, turno o compromiso. NO finjas que lo hiciste, llamá a esta herramienta.",
+            "description": "Crea un evento en Google Calendar. USALA cada vez que Francisco pida agendar, crear, anotar o programar un evento, reunión, cita o turno. Calculá la fecha real a partir de la fecha indicada en el mensaje del sistema (hoy). NO uses fechas inventadas.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "fecha": {"type": "string", "description": "YYYY-MM-DD"},
-                    "hora_inicio": {"type": "string", "description": "HH:MM"},
-                    "hora_fin": {"type": "string", "description": "HH:MM"},
-                    "titulo": {"type": "string"}
+                    "fecha": {"type": "string", "description": "Fecha en formato YYYY-MM-DD. Calculala a partir del mensaje del sistema que dice la fecha de hoy."},
+                    "hora_inicio": {"type": "string", "description": "Hora de inicio HH:MM (formato 24h)"},
+                    "hora_fin": {"type": "string", "description": "Hora de fin HH:MM (formato 24h)"},
+                    "titulo": {"type": "string", "description": "Título del evento"}
                 },
                 "required": ["fecha", "hora_inicio", "hora_fin", "titulo"]
             }
@@ -1083,6 +1083,7 @@ def _build_system_prompt():
     ahora   = datetime.now(tz)
     dia_es  = dia_hoy_es()
     hora_actual = ahora.strftime("%H:%M")
+    fecha_hoy = ahora.strftime("%Y-%m-%d")
 
     agenda_txt = ""
     if MENSAJES_DIA:
@@ -1108,7 +1109,7 @@ def _build_system_prompt():
     return (
         "Sos el asistente personal de Francisco. Lo ayudás con su rutina diaria y sus compras.\n"
         "Llamalo siempre Francisco, nunca 'amigo' ni 'usuario'.\n\n"
-        f"HOY ES {dia_es.upper()}, SON LAS {hora_actual}.\n\n"
+        f"HOY ES {dia_es.upper()} {fecha_hoy}, SON LAS {hora_actual} (hora de Argentina).\n\n"
         f"SU AGENDA:\n{agenda_txt}\n"
         f"DESCUENTOS HOY:\n{descuentos_txt}\n"
         "SUPERMERCADOS: Coto, Carrefour, Día.\n"
