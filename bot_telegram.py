@@ -172,7 +172,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "crear_evento_calendario",
-            "description": "Crea un evento en Google Calendar de Francisco",
+            "description": "Crea un evento en Google Calendar. Usala CADA VEZ que Francisco pida agendar, crear, anotar o programar un evento, reunión, cita, turno o compromiso. NO finjas que lo hiciste, llamá a esta herramienta.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1122,6 +1122,8 @@ def _build_system_prompt():
         "agregar pago, o cualquier acción — llamá la herramienta correspondiente. No finjas que lo hiciste.\n"
         "Ejecutá la herramienta primero, luego confirmá el resultado.\n"
         "Si Francisco dice 'agendame', 'anotame', 'creame un evento', 'registrame', etc. → usá la herramienta YA.\n"
+        "IMPORTANTE: cualquier pedido de crear/agendar un evento o reunión DEBE usar la herramienta crear_evento_calendario.\n"
+        "NUNCA respondas 'listo' o 'agendado' sin antes haber llamado a la herramienta.\n"
         "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos."
     )
 
@@ -1315,6 +1317,7 @@ async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         msg = response.choices[0].message
+        logging.info(f"IA response: tool_calls={bool(msg.tool_calls)}, content={msg.content[:80] if msg.content else 'None'}")
 
         if not msg.tool_calls:
             respuesta = msg.content or "Listo."
