@@ -212,6 +212,73 @@ TOOLS = [
                 "required": ["indice"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "iniciar_trabajo_tool",
+            "description": "Inicia una sesión de trabajo freelance. Usala cuando Francisco diga que empieza a trabajar en un proyecto.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "proyecto": {"type": "string", "description": "Nombre del proyecto (ej: 'Web Cliente X')"},
+                    "descripcion": {"type": "string", "description": "Opcional. Detalle de la tarea."}
+                },
+                "required": ["proyecto"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "terminar_trabajo_tool",
+            "description": "Termina la sesión de trabajo activa. Usala cuando Francisco diga que terminó de trabajar, 'corté', 'terminé', etc.",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_horas_trabajadas",
+            "description": "Muestra las horas trabajadas en el mes actual, por proyecto",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "agregar_recordatorio_puntual",
+            "description": "Agrega un recordatorio puntual (tarea, pendiente, cosa para hacer). NO es para agenda diaria, es para cosas sueltas.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "texto": {"type": "string", "description": "El texto del recordatorio"}
+                },
+                "required": ["texto"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_recordatorios_pendientes",
+            "description": "Muestra los recordatorios puntuales pendientes",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "marcar_recordatorio_hecho",
+            "description": "Marca un recordatorio puntual como hecho por su número (1, 2, 3...)",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "indice": {"type": "integer", "minimum": 1, "description": "Número del recordatorio (1 = primero)"}
+                },
+                "required": ["indice"]
+            }
+        }
     }
 ]
 
@@ -407,6 +474,183 @@ async def notificar_pagos(bot):
             await bot.send_message(chat_id=esposa, text=msg)
     except Exception as e:
         logging.error(f"Error en notificar_pagos: {e}")
+
+
+# ─── TRABAJO / FREELANCE ────────────────────────────────────────
+def get_worksheet_trabajo():
+    gc = get_gc()
+    sh = gc.open_by_key(SHEET_ID)
+    try:
+        return sh.worksheet("Trabajo")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet("Trabajo", rows=200, cols=10)
+        ws.append_row(["fecha", "proyecto", "hora_inicio", "hora_fin", "descripcion", "estado"])
+        logging.info("Hoja 'Trabajo' creada automáticamente.")
+        return ws
+
+def sesion_activa():
+    try:
+        rows = get_worksheet_trabajo().get_all_records()
+    except Exception:
+        return None
+    for r in reversed(rows):
+        if str(r.get("estado", "")).lower() == "activo":
+            return r
+    return None
+
+def _iniciar_trabajo(proyecto, descripcion=""):
+    activa = sesion_activa()
+    resultado = ""
+    if activa:
+        _cerrar_sesion_trabajo()
+        resultado = f"(Se cerró sesión anterior: {activa.get('proyecto','')}). "
+    ahora = datetime.now(tz)
+    get_worksheet_trabajo().append_row([
+        ahora.strftime("%Y-%m-%d"), proyecto, ahora.strftime("%H:%M"), "", descripcion, "activo"
+    ])
+    return resultado + f"Sesión iniciada: {proyecto} a las {ahora.strftime('%H:%M')}"
+
+def _cerrar_sesion_trabajo():
+    activa = sesion_activa()
+    if not activa:
+        return "No hay sesión activa."
+    ws = get_worksheet_trabajo()
+    rows = ws.get_all_values()
+    fila = len(rows)
+    ahora = datetime.now(tz).strftime("%H:%M")
+    ws.update(f"D{fila}", ahora)
+    ws.update(f"F{fila}", "terminado")
+    proyecto = rows[fila - 1][1] if fila > 1 else ""
+    return f"Sesión terminada: {proyecto} a las {ahora}"
+
+def _calcular_horas(mes=None):
+    if mes is None:
+        mes = datetime.now(tz).strftime("%Y-%m")
+    try:
+        rows = get_worksheet_trabajo().get_all_records()
+    except Exception:
+        return 0, [], {}
+    filas = [r for r in rows if str(r.get("fecha", "")).startswith(mes) and str(r.get("estado", "")).lower() == "terminado"]
+    total_min = 0
+    por_proyecto = {}
+    sesiones = []
+    for r in filas:
+        try:
+            h_i = datetime.strptime(r["hora_inicio"], "%H:%M")
+            h_f = datetime.strptime(r["hora_fin"], "%H:%M")
+            mins = (h_f - h_i).seconds / 60
+            total_min += mins
+            proy = r.get("proyecto", "Sin proyecto")
+            por_proyecto[proy] = por_proyecto.get(proy, 0) + mins
+            sesiones.append({**r, "minutos": mins})
+        except Exception:
+            pass
+    return total_min / 60, sesiones, por_proyecto
+
+
+# ─── RECORDATORIOS PUNTUALES ────────────────────────────────────
+def get_worksheet_recordatorios():
+    gc = get_gc()
+    sh = gc.open_by_key(SHEET_ID)
+    try:
+        return sh.worksheet("Recordatorios")
+    except gspread.exceptions.WorksheetNotFound:
+        ws = sh.add_worksheet("Recordatorios", rows=100, cols=5)
+        ws.append_row(["texto", "fecha_creacion", "estado"])
+        logging.info("Hoja 'Recordatorios' creada automáticamente.")
+        return ws
+
+def _leer_recordatorios_pendientes():
+    try:
+        rows = get_worksheet_recordatorios().get_all_records()
+    except Exception:
+        return []
+    return [r for r in rows if str(r.get("estado", "")).lower() != "hecho"]
+
+async def notificar_recordatorios(bot):
+    try:
+        pendientes = _leer_recordatorios_pendientes()
+        if not pendientes:
+            return
+        msg = "📋 Recordatorios pendientes:\n\n"
+        for i, r in enumerate(pendientes, 1):
+            msg += f"{i}. {r['texto']}\n"
+        msg += "\nHablame para marcarlos como hechos."
+        await bot.send_message(chat_id=CHAT_ID, text=msg)
+    except Exception as e:
+        logging.error(f"Error en notificar_recordatorios: {e}")
+
+
+# ─── RESUMEN SEMANAL ───────────────────────────────────────────
+async def enviar_resumen_semanal(bot):
+    try:
+        from datetime import timedelta
+        hoy = datetime.now(tz).date()
+        inicio_semana = hoy - timedelta(days=hoy.weekday())
+        fin_semana = inicio_semana + timedelta(days=6)
+
+        try:
+            rows_hist = get_worksheet("Historial").get_all_records()
+            filas_semana = [r for r in rows_hist if inicio_semana.strftime("%Y-%m-%d") <= str(r.get("fecha", "")) <= fin_semana.strftime("%Y-%m-%d")]
+        except Exception:
+            filas_semana = []
+
+        total_final = sum(float(r.get("precio_final", 0)) for r in filas_semana)
+        total_ahorro = sum(float(r.get("ahorro", 0)) for r in filas_semana)
+
+        horas, sesiones, por_proy = _calcular_horas(mes=hoy.strftime("%Y-%m"))
+        horas_semana = 0
+        for s in sesiones:
+            try:
+                if inicio_semana.strftime("%Y-%m-%d") <= s.get("fecha", "") <= fin_semana.strftime("%Y-%m-%d"):
+                    horas_semana += s["minutos"] / 60
+            except Exception:
+                pass
+
+        proximos = pagos_proximos(dias_ventana=5)
+
+        eventos = []
+        for i in range(7):
+            dia = inicio_semana + timedelta(days=i)
+            try:
+                evs = leer_eventos(dia.strftime("%Y-%m-%d"))
+                for e in evs:
+                    eventos.append({"fecha": dia.strftime("%d/%m"), "titulo": e.get("summary", "")})
+            except Exception:
+                pass
+
+        pendientes = _leer_recordatorios_pendientes()
+
+        msg = f"📊 RESUMEN SEMANAL\n{inicio_semana.strftime('%d/%m')} al {fin_semana.strftime('%d/%m')}\n\n"
+
+        if filas_semana:
+            msg += f"💵 Gastos: {len(filas_semana)} compras — ${total_final:,.0f} (ahorraste ${total_ahorro:,.0f})\n"
+        else:
+            msg += "💵 Sin gastos esta semana\n"
+
+        if horas_semana > 0:
+            msg += f"⏱ Trabajo: {horas_semana:.1f} horas\n"
+            for proy, mins in por_proy.items():
+                msg += f"  {proy}: {mins / 60:.1f}h\n"
+
+        if eventos:
+            msg += f"\n📅 Eventos de la semana ({len(eventos)}):\n"
+            for e in eventos[:5]:
+                msg += f"  {e['fecha']} — {e['titulo']}\n"
+
+        if proximos:
+            msg += "\n🔴 Pagos próximos:\n"
+            for p in proximos[:3]:
+                dias = p["dias_faltan"]
+                label = "HOY" if dias == 0 else "mañana" if dias == 1 else f"en {dias} días"
+                msg += f"  {p['nombre']} — {label}\n"
+
+        if pendientes:
+            msg += f"\n📋 {len(pendientes)} recordatorios pendientes"
+
+        await bot.send_message(chat_id=CHAT_ID, text=msg)
+    except Exception as e:
+        logging.error(f"Error en resumen semanal: {e}", exc_info=True)
 
 
 # ─── CARGA DE AGENDA ─────────────────────────────────────────────
@@ -1002,6 +1246,12 @@ def texto_ayuda(nombre):
         "/pago pagado Netflix\n"
         "/pagos — Próximos vencimientos\n"
         "/pago borrar Netflix\n\n"
+        "⏱ TRABAJO FREELANCE\n"
+        "Decime 'empiezo a trabajar en X' o 'terminé de trabajar'\n"
+        "Decime 'cuántas horas trabajé este mes'\n\n"
+        "📋 RECORDATORIOS\n"
+        "Decime 'recordame comprar pan'\n"
+        "Decime 'qué tengo pendiente' o 'marcá como hecho el 1'\n\n"
         "🛒 COMPRAS\n"
         "/compra leche 3 1500 Coto Ualá\n"
         "/donde arroz — Mejor super hoy\n"
@@ -1146,7 +1396,9 @@ def _build_system_prompt():
         "Tenés acceso a Google Calendar y Google Sheets de Francisco.\n"
         "Podés usar herramientas para: agregar/quitar recordatorios, registrar compras con descuentos,\n"
         "agregar pagos/suscripciones, marcar pagos como pagados, ver agenda/descuentos/gastos/pagos,\n"
-        "y crear/ver/eliminar eventos en el calendario.\n"
+        "y crear/ver/eliminar eventos en el calendario,\n"
+        "iniciar/terminar sesiones de trabajo freelance con tracker de horas,\n"
+        "y agregar/ver/marcar recordatorios puntuales.\n"
         "USÁ LAS HERRAMIENTAS. Cuando Francisco te pida agendar, crear evento, registrar compra,\n"
         "agregar pago, o cualquier acción — llamá la herramienta correspondiente. No finjas que lo hiciste.\n"
         "Ejecutá la herramienta primero, luego confirmá el resultado.\n"
@@ -1364,6 +1616,52 @@ async def _ejecutar_herramienta(nombre, args):
         except Exception as e:
             return f"Error al eliminar: {e}"
 
+    elif nombre == "iniciar_trabajo_tool":
+        proyecto = args["proyecto"]
+        descripcion = args.get("descripcion", "")
+        return _iniciar_trabajo(proyecto, descripcion)
+
+    elif nombre == "terminar_trabajo_tool":
+        return _cerrar_sesion_trabajo()
+
+    elif nombre == "ver_horas_trabajadas":
+        horas, sesiones, por_proy = _calcular_horas()
+        if horas == 0:
+            return "No hay horas registradas este mes."
+        lineas = [f"Horas trabajadas este mes: {horas:.1f}h total"]
+        for proy, mins in por_proy.items():
+            lineas.append(f"  {proy}: {mins / 60:.1f}h")
+        return "\n".join(lineas)
+
+    elif nombre == "agregar_recordatorio_puntual":
+        texto = args["texto"]
+        fecha = datetime.now(tz).strftime("%Y-%m-%d")
+        get_worksheet_recordatorios().append_row([texto, fecha, "pendiente"])
+        return f"Recordatorio agregado: {texto}"
+
+    elif nombre == "ver_recordatorios_pendientes":
+        pendientes = _leer_recordatorios_pendientes()
+        if not pendientes:
+            return "No hay recordatorios pendientes."
+        lineas = ["Recordatorios pendientes:"]
+        for i, r in enumerate(pendientes, 1):
+            lineas.append(f"  {i}. {r['texto']} (desde {r.get('fecha_creacion','?')})")
+        return "\n".join(lineas)
+
+    elif nombre == "marcar_recordatorio_hecho":
+        indice = int(args.get("indice", 1)) - 1
+        pendientes = _leer_recordatorios_pendientes()
+        if indice < 0 or indice >= len(pendientes):
+            return f"Número inválido. Hay {len(pendientes)} pendientes (usá 1 a {len(pendientes)})."
+        ws = get_worksheet_recordatorios()
+        rows = ws.get_all_values()
+        texto_buscado = pendientes[indice]["texto"]
+        fila = next((i + 2 for i, r in enumerate(rows[1:]) if str(r[0]) == str(texto_buscado) and str(r[2]).lower() != "hecho"), None)
+        if fila is None:
+            return "No se pudo encontrar ese recordatorio."
+        ws.update(f"C{fila}", "hecho")
+        return f"Recordatorio marcado como hecho: {texto_buscado}"
+
     return f"Herramienta desconocida: {nombre}"
 
 
@@ -1483,6 +1781,18 @@ async def main():
         CronTrigger(hour=9, minute=0, timezone=tz),
         args=[app.bot],
         id="notificar_pagos"
+    )
+    scheduler.add_job(
+        notificar_recordatorios,
+        CronTrigger(hour=9, minute=0, timezone=tz),
+        args=[app.bot],
+        id="notificar_recordatorios"
+    )
+    scheduler.add_job(
+        enviar_resumen_semanal,
+        CronTrigger(day_of_week="sun", hour=9, minute=0, timezone=tz),
+        args=[app.bot],
+        id="resumen_semanal"
     )
     scheduler.start()
 
