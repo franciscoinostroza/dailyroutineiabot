@@ -54,7 +54,7 @@ RESUMEN:      dict = {}
 
 TECLADO = ReplyKeyboardMarkup(
     [
-        [KeyboardButton("📅 Hoy"), KeyboardButton("💳 Pagos"), KeyboardButton("🛒 Gastos")],
+        [KeyboardButton("📅 Rutina"), KeyboardButton("💳 Pagos"), KeyboardButton("🛒 Gastos")],
         [KeyboardButton("⏱ Trabajo"), KeyboardButton("📋 Tareas"), KeyboardButton("📊 Resumen")],
     ],
     resize_keyboard=True,
@@ -66,8 +66,8 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "agregar_recordatorio",
-            "description": "Agrega un recordatorio a la agenda diaria de Francisco",
+            "name": "agregar_a_rutina",
+            "description": "Agrega una actividad a la RUTINA SEMANAL (Google Sheets). Para cosas RECURRENTES cada semana: medicación, ejercicio, lectura. NO usar para eventos puntuales con fecha (eso va a crear_evento_calendario).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -83,8 +83,8 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "borrar_recordatorio",
-            "description": "Elimina un recordatorio de la agenda",
+            "name": "quitar_de_rutina",
+            "description": "Elimina una actividad de la rutina semanal (Google Sheets). Solo para la rutina, no para el calendario.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -172,8 +172,8 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "ver_agenda",
-            "description": "Muestra la agenda semanal completa de Francisco con todos los recordatorios",
+            "name": "ver_rutina_diaria",
+            "description": "Muestra la rutina semanal de Francisco (Google Sheets). Actividades RECURRENTES. NO muestra eventos del calendario.",
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
     },
@@ -1246,7 +1246,8 @@ def texto_ayuda(nombre):
     return (
         f"👋 Hola {nombre}! Soy tu asistente personal.\n\n"
         "Tocá los botones fijos de abajo o hablame como quieras:\n\n"
-        "• Agenda y recordatorios diarios\n"
+        "• 📋 Rutina diaria (medicación, ejercicio, leer)\n"
+        "• 🗓 Calendario (reuniones, citas, turnos, médico)\n"
         "• Pagos y suscripciones (vence X el día Y)\n"
         "• Compras con descuentos (compré X a $Y en Z con W)\n"
         "• Horas de trabajo freelance\n"
@@ -1368,21 +1369,25 @@ def _build_system_prompt():
         "SUPERMERCADOS: Coto, Carrefour, Día.\n"
         "BILLETERAS: MercadoPago, Brubank, Ualá, PersonalPay, Supervielle, Banco Ciudad, Banco del Sol, Prex.\n\n"
         "Francisco es freelancer en Workana (desarrollo web). Vive con su esposa y su bebé.\n"
-        "Tenés acceso a Google Calendar y Google Sheets de Francisco.\n"
-        "Usá las herramientas para ver la agenda, descuentos, gastos, pagos, eventos y horas trabajadas.\n"
+        "Tenés 2 sistemas de agenda, NO los confundas:\n"
+        "  🗓 CALENDARIO (Google Calendar) → eventos PUNTUALES con fecha: reuniones, citas, turnos, médico, videollamada.\n"
+        "    Tools: crear_evento_calendario, ver_eventos_calendario, eliminar_evento_calendario.\n"
+        "  📋 RUTINA (Google Sheets) → actividades RECURRENTES cada semana: medicación, ejercicio, lectura.\n"
+        "    Tools: agregar_a_rutina, quitar_de_rutina, ver_rutina_diaria.\n"
+        "    Palabras clave: 'rutina', 'todos los días', 'cada lunes', 'medicación', 'ejercicio', 'leer'.\n"
         "USÁ LAS HERRAMIENTAS. Cuando Francisco te pida hacer algo concreto, llamá la herramienta.\n"
         "No finjas que hiciste algo sin haber llamado la herramienta. Confirmá el resultado.\n"
-        "Si Francisco dice 'agendame', 'anotame', 'creame un evento' → usá crear_evento_calendario.\n"
+        "Si dice 'reunión', 'cita', 'turno', 'médico', 'videollamada', 'evento' → usá crear_evento_calendario.\n"
+        "Si dice 'agregá a mi rutina', 'todos los lunes', 'cada martes', 'medicación' → usá agregar_a_rutina.\n"
         "Si dice 'empiezo a trabajar en X' → usá iniciar_trabajo_tool.\n"
         "Si dice 'terminé', 'corté' → usá terminar_trabajo_tool.\n"
         "Si dice 'compré X a $Y en Z con W' → usá registrar_compra.\n"
         "Si dice 'agregá el pago de X' o 'X vence el día Y' → usá agregar_pago.\n"
         "Si dice 'recordame X' → usá agregar_recordatorio_puntual.\n"
         "NUNCA respondas 'listo' o 'agendado' sin haber llamado la herramienta.\n"
-        "Si Francisco pregunta 'cómo viene mi día', 'qué tengo que hacer', consultá ver_agenda primero.\n"
-        "Si pregunta por descuentos, gastos, pagos, horas trabajadas — consultá la herramienta primero.\n"
+        "Si Francisco pregunta 'cómo viene mi día', 'qué tengo que hacer', consultá ver_rutina_diaria primero.\n"
         "Botones rápidos que puede usar:\n"
-        "  '📅 Hoy' → ver_agenda\n"
+        "  '📅 Rutina' → ver_rutina_diaria\n"
         "  '💳 Pagos' → ver_pagos\n"
         "  '🛒 Gastos' → ver_gastos\n"
         "  '⏱ Trabajo' → ver_horas_trabajadas\n"
@@ -1406,15 +1411,15 @@ def _get_historial(chat_id):
 
 async def _ejecutar_herramienta(nombre, args):
     global _ultimos_eventos
-    if nombre == "agregar_recordatorio":
+    if nombre == "agregar_a_rutina":
         dia = args["dia"].lower()
         if dia not in DIAS_VALIDOS:
             return f"Día inválido: {dia}. Usá lunes a domingo."
         get_worksheet("Agenda").append_row([dia, args["hora"], args["minuto"], args["mensaje"]])
         cargar_agenda()
-        return f"Recordatorio agregado: {dia} {args['hora']:02d}:{args['minuto']:02d} - {args['mensaje']}"
+        return f"Agregado a la rutina: {dia} {args['hora']:02d}:{args['minuto']:02d} - {args['mensaje']}"
 
-    elif nombre == "borrar_recordatorio":
+    elif nombre == "quitar_de_rutina":
         dia = args["dia"].lower()
         ws = get_worksheet("Agenda")
         rows = ws.get_all_values()
@@ -1547,7 +1552,7 @@ async def _ejecutar_herramienta(nombre, args):
             lineas.append(f"  {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%{t_txt}")
         return "\n".join(lineas)
 
-    elif nombre == "ver_agenda":
+    elif nombre == "ver_rutina_diaria":
         if not MENSAJES_DIA:
             return "La agenda está vacía."
         lineas = ["Agenda semanal:"]
