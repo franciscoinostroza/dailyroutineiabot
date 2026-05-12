@@ -184,6 +184,34 @@ TOOLS = [
                 "required": ["fecha", "hora_inicio", "hora_fin", "titulo"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_eventos_calendario",
+            "description": "Lista los eventos del calendario de Francisco para un día específico",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "fecha": {"type": "string", "description": "Fecha YYYY-MM-DD. 'hoy' o 'mañana' también son válidos."}
+                },
+                "required": ["fecha"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "eliminar_evento_calendario",
+            "description": "Elimina un evento del calendario por su número (1, 2, 3...) según la última lista de eventos consultada",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "indice": {"type": "integer", "minimum": 1, "description": "Número del evento a eliminar (1 = primero)"}
+                },
+                "required": ["indice"]
+            }
+        }
     }
 ]
 
@@ -1118,7 +1146,7 @@ def _build_system_prompt():
         "Tenés acceso a Google Calendar y Google Sheets de Francisco.\n"
         "Podés usar herramientas para: agregar/quitar recordatorios, registrar compras con descuentos,\n"
         "agregar pagos/suscripciones, marcar pagos como pagados, ver agenda/descuentos/gastos/pagos,\n"
-        "y crear eventos en el calendario.\n"
+        "y crear/ver/eliminar eventos en el calendario.\n"
         "USÁ LAS HERRAMIENTAS. Cuando Francisco te pida agendar, crear evento, registrar compra,\n"
         "agregar pago, o cualquier acción — llamá la herramienta correspondiente. No finjas que lo hiciste.\n"
         "Ejecutá la herramienta primero, luego confirmá el resultado.\n"
@@ -1132,6 +1160,7 @@ historial_ia  = []
 MAX_HISTORIAL = 30
 
 async def _ejecutar_herramienta(nombre, args):
+    global _ultimos_eventos
     if nombre == "agregar_recordatorio":
         dia = args["dia"].lower()
         if dia not in DIAS_VALIDOS:
@@ -1292,6 +1321,48 @@ async def _ejecutar_herramienta(nombre, args):
         titulo = args["titulo"]
         crear_evento(titulo, inicio, fin)
         return f"Evento creado: {titulo} — {fecha} {args['hora_inicio']}-{args['hora_fin']}"
+
+    elif nombre == "ver_eventos_calendario":
+        from datetime import timedelta
+        arg_fecha = args.get("fecha", "").lower()
+        hoy = datetime.now(tz).date()
+        if arg_fecha == "hoy":
+            fecha_dt = hoy
+        elif arg_fecha in ("mañana", "manana"):
+            fecha_dt = hoy + timedelta(days=1)
+        else:
+            try:
+                fecha_dt = datetime.strptime(arg_fecha, "%Y-%m-%d").date()
+            except ValueError:
+                return f"Fecha inválida: {arg_fecha}. Usá YYYY-MM-DD, 'hoy' o 'mañana'."
+        dia_str = fecha_dt.strftime("%Y-%m-%d")
+        try:
+            eventos = leer_eventos(dia_str)
+            _ultimos_eventos = eventos
+            if not eventos:
+                return f"No hay eventos para el {fecha_dt.strftime('%d/%m/%Y')}."
+            lineas = [f"Eventos del {fecha_dt.strftime('%d/%m/%Y')}:"]
+            for i, e in enumerate(eventos, 1):
+                hora = e["start"].get("dateTime", e["start"].get("date", ""))
+                hora = hora[11:16] if "T" in hora else "Todo el día"
+                lineas.append(f"  {i}. {hora} — {e.get('summary', 'Sin título')}")
+            return "\n".join(lineas)
+        except Exception as e:
+            return f"Error al leer eventos: {e}"
+
+    elif nombre == "eliminar_evento_calendario":
+        if not _ultimos_eventos:
+            return "Primero consultá los eventos con ver_eventos_calendario."
+        indice = int(args.get("indice", 1)) - 1
+        if indice < 0 or indice >= len(_ultimos_eventos):
+            return f"Número inválido. Hay {len(_ultimos_eventos)} eventos (usá 1 a {len(_ultimos_eventos)})."
+        titulo = _ultimos_eventos[indice].get("summary", "Sin título")
+        try:
+            eliminar_evento(_ultimos_eventos[indice]["id"])
+            _ultimos_eventos.pop(indice)
+            return f"Evento eliminado: {titulo}"
+        except Exception as e:
+            return f"Error al eliminar: {e}"
 
     return f"Herramienta desconocida: {nombre}"
 
