@@ -14,7 +14,7 @@ import re
 from datetime import datetime
 from dotenv import load_dotenv
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from openai import AsyncOpenAI
@@ -51,6 +51,15 @@ DIA_EN_ES    = {
 
 MENSAJES_DIA: dict = {}
 RESUMEN:      dict = {}
+
+TECLADO = ReplyKeyboardMarkup(
+    [
+        [KeyboardButton("📅 Hoy"), KeyboardButton("💳 Pagos"), KeyboardButton("🛒 Gastos")],
+        [KeyboardButton("⏱ Trabajo"), KeyboardButton("📋 Tareas"), KeyboardButton("📊 Resumen")],
+    ],
+    resize_keyboard=True,
+    input_field_placeholder="Escribime o tocá un botón..."
+)
 
 # ─── HERRAMIENTAS PARA LA IA ─────────────────────────────────────
 TOOLS = [
@@ -278,6 +287,14 @@ TOOLS = [
                 },
                 "required": ["indice"]
             }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "resumen_semanal_tool",
+            "description": "Genera un resumen semanal con gastos, horas trabajadas, pagos próximos y eventos",
+            "parameters": {"type": "object", "properties": {}, "required": []}
         }
     }
 ]
@@ -1227,39 +1244,15 @@ async def pagos_proximos_cmd(update, context: ContextTypes.DEFAULT_TYPE):
 # ─── AYUDA / START ───────────────────────────────────────────────
 def texto_ayuda(nombre):
     return (
-        f"👋 Hola {nombre}!\n\n"
-        "📅 AGENDA\n"
-        "/hoy — Resumen del día\n"
-        "/listar — Agenda semanal completa\n"
-        "/agregar lunes 10 0 Texto\n"
-        "/borrar lunes 10 0\n"
-        "/recargar — Sincronizar con Sheets\n\n"
-        "🗓 CALENDAR\n"
-        "/evento 2026-05-06 10:00 11:00 Título\n"
-        "/agenda hoy — Eventos de hoy\n"
-        "/agenda mañana — Eventos de mañana\n"
-        "/agenda lunes — Próximo lunes\n"
-        "/eliminar_evento 1 — Eliminar evento\n\n"
-        "💳 PAGOS\n"
-        "/pago agregar Netflix 15 3200\n"
-        "/pago listar — Ver todos\n"
-        "/pago pagado Netflix\n"
-        "/pagos — Próximos vencimientos\n"
-        "/pago borrar Netflix\n\n"
-        "⏱ TRABAJO FREELANCE\n"
-        "Decime 'empiezo a trabajar en X' o 'terminé de trabajar'\n"
-        "Decime 'cuántas horas trabajé este mes'\n\n"
-        "📋 RECORDATORIOS\n"
-        "Decime 'recordame comprar pan'\n"
-        "Decime 'qué tengo pendiente' o 'marcá como hecho el 1'\n\n"
-        "🛒 COMPRAS\n"
-        "/compra leche 3 1500 Coto Ualá\n"
-        "/donde arroz — Mejor super hoy\n"
-        "/descuentos — Descuentos de hoy\n"
-        "/gastos — Resumen del mes\n"
-        "/historial — Últimas compras\n\n"
-        "🤖 IA\n"
-        "Escribime cualquier cosa sin /\n"
+        f"👋 Hola {nombre}! Soy tu asistente personal.\n\n"
+        "Usá los botones fijos de abajo o escribime en lenguaje natural:\n\n"
+        "• Agenda y recordatorios diarios\n"
+        "• Pagos y suscripciones (vence X el día Y)\n"
+        "• Compras con descuentos (compré X a $Y en Z con W)\n"
+        "• Horas de trabajo freelance\n"
+        "• Eventos en Google Calendar\n"
+        "• Recordatorios puntuales (recordame X)\n\n"
+        "También funcionan comandos: /hoy /listar /compra /evento /gastos /pagos /recargar /test /agenda /agregar /borrar /donde /descuentos /historial /pago /eliminar_evento"
     )
 
 async def start(update, context: ContextTypes.DEFAULT_TYPE):
@@ -1268,7 +1261,12 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.username or "sin username"
 
     if chat_id == str(CHAT_ID):
-        await update.message.reply_text(texto_ayuda(nombre))
+        await update.message.reply_text(
+            f"👋 Hola {nombre}! Soy tu asistente personal.\n\n"
+            "Usá los botones de abajo o escribime en lenguaje natural.\n"
+            "Para ayuda detallada: /ayuda",
+            reply_markup=TECLADO
+        )
 
     elif chat_id == str(os.getenv("CHAT_ID_ESPOSA", "")):
         botones = InlineKeyboardMarkup([
@@ -1383,6 +1381,13 @@ def _build_system_prompt():
         "NUNCA respondas 'listo' o 'agendado' sin haber llamado la herramienta.\n"
         "Si Francisco pregunta 'cómo viene mi día', 'qué tengo que hacer', consultá ver_agenda primero.\n"
         "Si pregunta por descuentos, gastos, pagos, horas trabajadas — consultá la herramienta primero.\n"
+        "Botones rápidos que puede usar:\n"
+        "  '📅 Hoy' → ver_agenda\n"
+        "  '💳 Pagos' → ver_pagos\n"
+        "  '🛒 Gastos' → ver_gastos\n"
+        "  '⏱ Trabajo' → ver_horas_trabajadas\n"
+        "  '📋 Tareas' → ver_recordatorios_pendientes\n"
+        "  '📊 Resumen' → resumen_semanal_tool\n"
         "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos."
     )
 
@@ -1648,6 +1653,48 @@ async def _ejecutar_herramienta(nombre, args):
             return "No se pudo encontrar ese recordatorio."
         ws.update(f"C{fila}", "hecho")
         return f"Recordatorio marcado como hecho: {texto_buscado}"
+
+    elif nombre == "resumen_semanal_tool":
+        from datetime import timedelta
+        hoy = datetime.now(tz).date()
+        inicio = hoy - timedelta(days=hoy.weekday())
+        fin = inicio + timedelta(days=6)
+        lineas = [f"📊 Resumen {inicio.strftime('%d/%m')} al {fin.strftime('%d/%m')}\n"]
+
+        try:
+            rows = get_worksheet("Historial").get_all_records()
+            filas = [r for r in rows if inicio.strftime("%Y-%m-%d") <= str(r.get("fecha", "")) <= fin.strftime("%Y-%m-%d")]
+            if filas:
+                total = sum(float(r.get("precio_final", 0)) for r in filas)
+                ahorro = sum(float(r.get("ahorro", 0)) for r in filas)
+                lineas.append(f"💵 Gastos: {len(filas)} compras — ${total:,.0f} (ahorraste ${ahorro:,.0f})")
+                por_super = {}
+                for r in filas:
+                    s = r.get("supermercado", "Otro")
+                    por_super[s] = por_super.get(s, 0.0) + float(r.get("precio_final", 0))
+                for s, m in sorted(por_super.items(), key=lambda x: x[1], reverse=True):
+                    lineas.append(f"  {s}: ${m:,.0f}")
+            else:
+                lineas.append("💵 Sin gastos esta semana")
+        except Exception:
+            pass
+
+        horas, sesiones, por_proy = _calcular_horas()
+        h_semana = sum(s["minutos"] / 60 for s in sesiones if inicio.strftime("%Y-%m-%d") <= s.get("fecha", "") <= fin.strftime("%Y-%m-%d"))
+        if h_semana > 0:
+            lineas.append(f"\n⏱ Trabajo: {h_semana:.1f}h")
+            for p, mins in por_proy.items():
+                lineas.append(f"  {p}: {mins / 60:.1f}h")
+
+        prox = pagos_proximos(dias_ventana=5)
+        if prox:
+            lineas.append(f"\n🔴 Pagos próximos ({len(prox)}):")
+            for p in prox[:4]:
+                d = p["dias_faltan"]
+                lbl = "HOY" if d == 0 else "mañana" if d == 1 else f"en {d} días"
+                lineas.append(f"  {p['nombre']} — ${float(p.get('monto',0)):,.0f} — {lbl}")
+
+        return "\n".join(lineas)
 
     return f"Herramienta desconocida: {nombre}"
 
