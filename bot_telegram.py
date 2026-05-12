@@ -1245,7 +1245,7 @@ async def pagos_proximos_cmd(update, context: ContextTypes.DEFAULT_TYPE):
 def texto_ayuda(nombre):
     return (
         f"👋 Hola {nombre}! Soy tu asistente personal.\n\n"
-        "Usá los botones fijos de abajo o escribime en lenguaje natural:\n\n"
+        "Tocá los botones fijos de abajo o hablame como quieras:\n\n"
         "• Agenda y recordatorios diarios\n"
         "• Pagos y suscripciones (vence X el día Y)\n"
         "• Compras con descuentos (compré X a $Y en Z con W)\n"
@@ -1262,9 +1262,9 @@ async def start(update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_id == str(CHAT_ID):
         await update.message.reply_text(
-            f"👋 Hola {nombre}! Soy tu asistente personal.\n\n"
-            "Usá los botones de abajo o escribime en lenguaje natural.\n"
-            "Para ayuda detallada: /ayuda",
+            f"👋 ¡Hola {nombre}! Acá estoy para lo que necesites.\n\n"
+            "Tocá los botones de abajo o escribime lo que quieras.\n"
+            "Para ver todo lo que puedo hacer: /ayuda",
             reply_markup=TECLADO
         )
 
@@ -1388,7 +1388,8 @@ def _build_system_prompt():
         "  '⏱ Trabajo' → ver_horas_trabajadas\n"
         "  '📋 Tareas' → ver_recordatorios_pendientes\n"
         "  '📊 Resumen' → resumen_semanal_tool\n"
-        "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos."
+        "Respondé siempre en español, de forma cálida, natural y cercana, sin markdown ni asteriscos.\n"
+        "No uses frases robóticas como 'en lenguaje natural' o 'asistente virtual'."
     )
 
 historial_ia = {}  # chat_id -> list of messages
