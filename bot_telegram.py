@@ -1363,53 +1363,40 @@ def _build_system_prompt():
     hora_actual = ahora.strftime("%H:%M")
     fecha_hoy = ahora.strftime("%Y-%m-%d")
 
-    agenda_txt = ""
-    if MENSAJES_DIA:
-        for d in DIAS_SEMANA:
-            msgs = "\n".join(f"    {h:02d}:{m:02d} — {t}" for h, m, t in MENSAJES_DIA.get(d, []))
-            agenda_txt += f"\n{d.upper()}:\n{msgs}\n"
-    else:
-        agenda_txt = "\n  (No disponible — error de conexión con Google Sheets)\n"
-
-    descuentos_txt = ""
-    try:
-        filas = descuentos_del_dia(dia_es)
-        if filas:
-            for d in sorted(filas, key=lambda r: float(r.get("porcentaje", 0)), reverse=True):
-                t     = parsear_tope(d.get("tope"))
-                t_txt = f" tope ${t:,.0f}" if t else " sin tope"
-                descuentos_txt += f"  {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%{t_txt}\n"
-        else:
-            descuentos_txt = "  Ninguno para hoy.\n"
-    except Exception:
-        descuentos_txt = "  (No disponible)\n"
-
     return (
         "Sos el asistente personal de Francisco. Lo ayudás con su rutina diaria y sus compras.\n"
         "Llamalo siempre Francisco, nunca 'amigo' ni 'usuario'.\n\n"
         f"HOY ES {dia_es.upper()} {fecha_hoy}, SON LAS {hora_actual} (hora de Argentina).\n\n"
-        f"SU AGENDA:\n{agenda_txt}\n"
-        f"DESCUENTOS HOY:\n{descuentos_txt}\n"
         "SUPERMERCADOS: Coto, Carrefour, Día.\n"
         "BILLETERAS: MercadoPago, Brubank, Ualá, PersonalPay, Supervielle, Banco Ciudad, Banco del Sol, Prex.\n\n"
         "Francisco es freelancer en Workana (desarrollo web). Vive con su esposa y su bebé.\n"
         "Tenés acceso a Google Calendar y Google Sheets de Francisco.\n"
-        "Podés usar herramientas para: agregar/quitar recordatorios, registrar compras con descuentos,\n"
-        "agregar pagos/suscripciones, marcar pagos como pagados, ver agenda/descuentos/gastos/pagos,\n"
-        "y crear/ver/eliminar eventos en el calendario,\n"
-        "iniciar/terminar sesiones de trabajo freelance con tracker de horas,\n"
-        "y agregar/ver/marcar recordatorios puntuales.\n"
-        "USÁ LAS HERRAMIENTAS. Cuando Francisco te pida agendar, crear evento, registrar compra,\n"
-        "agregar pago, o cualquier acción — llamá la herramienta correspondiente. No finjas que lo hiciste.\n"
-        "Ejecutá la herramienta primero, luego confirmá el resultado.\n"
-        "Si Francisco dice 'agendame', 'anotame', 'creame un evento', 'registrame', etc. → usá la herramienta YA.\n"
-        "IMPORTANTE: cualquier pedido de crear/agendar un evento o reunión DEBE usar la herramienta crear_evento_calendario.\n"
-        "NUNCA respondas 'listo' o 'agendado' sin antes haber llamado a la herramienta.\n"
+        "Usá las herramientas para ver la agenda, descuentos, gastos, pagos, eventos y horas trabajadas.\n"
+        "USÁ LAS HERRAMIENTAS. Cuando Francisco te pida hacer algo concreto, llamá la herramienta.\n"
+        "No finjas que hiciste algo sin haber llamado la herramienta. Confirmá el resultado.\n"
+        "Si Francisco dice 'agendame', 'anotame', 'creame un evento' → usá crear_evento_calendario.\n"
+        "Si dice 'empiezo a trabajar en X' → usá iniciar_trabajo_tool.\n"
+        "Si dice 'terminé', 'corté' → usá terminar_trabajo_tool.\n"
+        "Si dice 'compré X a $Y en Z con W' → usá registrar_compra.\n"
+        "Si dice 'agregá el pago de X' o 'X vence el día Y' → usá agregar_pago.\n"
+        "Si dice 'recordame X' → usá agregar_recordatorio_puntual.\n"
+        "NUNCA respondas 'listo' o 'agendado' sin haber llamado la herramienta.\n"
+        "Si Francisco pregunta 'cómo viene mi día', 'qué tengo que hacer', consultá ver_agenda primero.\n"
+        "Si pregunta por descuentos, gastos, pagos, horas trabajadas — consultá la herramienta primero.\n"
         "Respondé siempre en español, de forma cálida y natural, sin markdown ni asteriscos."
     )
 
-historial_ia  = []
-MAX_HISTORIAL = 30
+historial_ia = {}  # chat_id -> list of messages
+MAX_HISTORIAL = 12
+
+def _get_historial(chat_id):
+    cid = str(chat_id)
+    if cid not in historial_ia:
+        historial_ia[cid] = []
+    h = historial_ia[cid]
+    if len(h) > MAX_HISTORIAL:
+        del h[:-MAX_HISTORIAL]
+    return h
 
 async def _ejecutar_herramienta(nombre, args):
     global _ultimos_eventos
@@ -1667,13 +1654,14 @@ async def _ejecutar_herramienta(nombre, args):
 
 async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text
-    historial_ia.append({"role": "user", "content": texto})
-    if len(historial_ia) > MAX_HISTORIAL:
-        del historial_ia[:-MAX_HISTORIAL]
+    chat_id = str(update.effective_chat.id)
+    h = _get_historial(chat_id)
+    h.append({"role": "user", "content": texto})
+
     await update.message.chat.send_action("typing")
 
-    mensajes_api = [{"role": "system", "content": _build_system_prompt()}] + historial_ia
-    for _ in range(5):  # máximo 5 iteraciones de tool calls
+    mensajes_api = [{"role": "system", "content": _build_system_prompt()}] + h
+    for _ in range(5):
         try:
             response = await openai_client.chat.completions.create(
                 model="gpt-4o-mini",
@@ -1691,9 +1679,7 @@ async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
 
         if not msg.tool_calls:
             respuesta = msg.content or "Listo."
-            historial_ia.append({"role": "assistant", "content": respuesta})
-            if len(historial_ia) > MAX_HISTORIAL:
-                del historial_ia[:-MAX_HISTORIAL]
+            h.append({"role": "assistant", "content": respuesta})
             await update.message.reply_text(respuesta)
             return
 
@@ -1721,9 +1707,6 @@ async def responder_ia(update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── MENSAJES PROGRAMADOS ────────────────────────────────────────
 async def enviar_mensaje(bot, texto):
-    historial_ia.append({"role": "assistant", "content": texto})
-    if len(historial_ia) > MAX_HISTORIAL:
-        del historial_ia[:-MAX_HISTORIAL]
     await bot.send_message(chat_id=CHAT_ID, text=texto)
 
 def programar_mensajes(scheduler, bot):
