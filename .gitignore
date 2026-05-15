@@ -4,3 +4,11 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+credentials.json
+*.credentials.json
+google-credentials*.json
+dist/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
