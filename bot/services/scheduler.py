@@ -42,6 +42,10 @@ def setup_scheduler(
     verificar_inactividad_fn=None,
     enviar_standup_fn=None,
     verificar_deadlines_fn=None,
+    enviar_pulso_mediodia_fn=None,
+    enviar_pulso_cierre_fn=None,
+    enviar_saludo_dia_fn=None,
+    enviar_insights_fn=None,
 ) -> AsyncIOScheduler:
     import pytz
     tz = pytz.timezone(settings.timezone)
@@ -123,6 +127,43 @@ def setup_scheduler(
             ),
             args=[app.bot],
             id="verificar_deadlines",
+        )
+
+    if enviar_pulso_mediodia_fn:
+        scheduler.add_job(
+            enviar_pulso_mediodia_fn,
+            CronTrigger(day_of_week="mon-fri", hour=settings.mediodia_hour,
+                        minute=settings.mediodia_minute, timezone=tz),
+            args=[app.bot],
+            id="pulso_mediodia",
+        )
+
+    if enviar_pulso_cierre_fn:
+        scheduler.add_job(
+            enviar_pulso_cierre_fn,
+            CronTrigger(day_of_week="mon-sun", hour=settings.cierre_hour,
+                        minute=settings.cierre_minute, timezone=tz),
+            args=[app.bot],
+            id="pulso_cierre",
+        )
+
+    if enviar_saludo_dia_fn:
+        scheduler.add_job(
+            enviar_saludo_dia_fn,
+            CronTrigger(day_of_week="mon,fri", hour=settings.briefing_hour,
+                        minute=settings.briefing_minute + 5, timezone=tz),
+            args=[app.bot],
+            id="saludo_dia",
+        )
+
+    if enviar_insights_fn:
+        scheduler.add_job(
+            enviar_insights_fn,
+            CronTrigger(day_of_week=settings.weekly_summary_day,
+                        hour=settings.weekly_summary_hour,
+                        minute=settings.weekly_summary_minute + 1, timezone=tz),
+            args=[app.bot],
+            id="insights_semanales",
         )
 
     scheduler.start()

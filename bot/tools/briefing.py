@@ -92,7 +92,12 @@ async def generar_briefing() -> str:
 
 async def enviar_briefing(bot) -> None:
     try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
         msg = await generar_briefing()
-        await bot.send_message(chat_id=settings.chat_id, text=msg)
+        botones = InlineKeyboardMarkup([
+            [InlineKeyboardButton("⏱ Arrancar a trabajar", callback_data="briefing_trabajar"),
+             InlineKeyboardButton("📋 Ver tareas", callback_data="briefing_tareas")],
+        ])
+        await bot.send_message(chat_id=settings.chat_id, text=msg, reply_markup=botones)
     except Exception as e:
         logging.error(f"Error en briefing matutino: {e}", exc_info=True)

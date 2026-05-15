@@ -14,3 +14,4 @@ from .proyectos import proyecto
 from .habitos import habitos
 from .deadlines import deadline
 from .facturas import factura
+from .animica import animica, handle_mood_callback

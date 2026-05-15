@@ -11,6 +11,8 @@ from bot.tools.briefing import enviar_briefing
 from bot.tools.trabajo import verificar_inactividad
 from bot.tools.standup import enviar_standup
 from bot.tools.deadlines import verificar_deadlines
+from bot.tools.pulsos import enviar_pulso_mediodia, enviar_pulso_cierre, enviar_saludo_dia
+from bot.tools.insights import generar_insights
 from bot.services.scheduler import setup_scheduler
 from bot.services.health import start_health_server, stop_health_server
 
@@ -29,6 +31,7 @@ from bot.handlers.proyectos import proyecto
 from bot.handlers.habitos import habitos
 from bot.handlers.deadlines import deadline
 from bot.handlers.facturas import factura
+from bot.handlers.animica import animica, handle_mood_callback
 
 
 logging.basicConfig(
@@ -73,15 +76,23 @@ async def main():
     app.add_handler(CommandHandler("habitos", habitos))
     app.add_handler(CommandHandler("deadline", deadline))
     app.add_handler(CommandHandler("factura", factura))
+    app.add_handler(CommandHandler("animica", animica))
+    app.add_handler(CallbackQueryHandler(handle_mood_callback, pattern="^mood_"))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_ticket_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
+
+    async def _insights(bot):
+        msg = await generar_insights()
+        await bot.send_message(chat_id=settings.chat_id, text=f"💡 Insights de la semana:\n\n{msg}")
 
     scheduler = setup_scheduler(
         app, MENSAJES_DIA,
         notificar_pagos, notificar_recordatorios, enviar_resumen_semanal,
         enviar_briefing, verificar_inactividad,
         enviar_standup, verificar_deadlines,
+        enviar_pulso_mediodia, enviar_pulso_cierre,
+        enviar_saludo_dia, _insights,
     )
 
     health_port = int(os.environ.get("HEALTH_PORT", "0"))

@@ -44,6 +44,12 @@ class Settings:
     deadline_alert_hour: int = field(default_factory=lambda: int(os.getenv("DEADLINE_ALERT_HOUR", "8")))
     deadline_alert_minute: int = field(default_factory=lambda: int(os.getenv("DEADLINE_ALERT_MINUTE", "5")))
 
+    mediodia_hour: int = field(default_factory=lambda: int(os.getenv("MEDIODIA_HOUR", "13")))
+    mediodia_minute: int = field(default_factory=lambda: int(os.getenv("MEDIODIA_MINUTE", "0")))
+
+    cierre_hour: int = field(default_factory=lambda: int(os.getenv("CIERRE_HOUR", "21")))
+    cierre_minute: int = field(default_factory=lambda: int(os.getenv("CIERRE_MINUTE", "0")))
+
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
 

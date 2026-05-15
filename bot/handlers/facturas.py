@@ -50,7 +50,15 @@ async def factura(update, context: ContextTypes.DEFAULT_TYPE):
             return
         cliente = " ".join(context.args[1:])
         result = await marcar_factura_cobrada(cliente)
-        await update.message.reply_text(f"✅ {result}")
+        monto = ""
+        try:
+            import re
+            nums = re.findall(r"[\d,.]+", result)
+            if nums:
+                monto = f" ${nums[0]}"
+        except Exception:
+            pass
+        await update.message.reply_text(f"✅ {result}\n\n💰 ¡Bien ahi! Plata cobrada{monto}. A seguir facturando.")
 
     else:
         await update.message.reply_text(

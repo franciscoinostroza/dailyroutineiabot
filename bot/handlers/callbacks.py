@@ -59,3 +59,14 @@ async def callback_botones(update, context: ContextTypes.DEFAULT_TYPE):
             for d in filas_ord:
                 msg += f"⭐ {d['supermercado']} con {d['billetera']}: {d['porcentaje']:g}%\n"
             await query.edit_message_text(msg)
+
+    elif query.data == "briefing_trabajar":
+        from bot.tools.trabajo import iniciar_trabajo_tool
+        await query.edit_message_text(query.message.text + "\n\n⏱ Dale, decime en que proyecto arrancas y lo registro.")
+        await query.answer()
+
+    elif query.data == "briefing_tareas":
+        from bot.tools.recordatorios import ver_recordatorios_pendientes
+        tareas = await ver_recordatorios_pendientes()
+        await query.edit_message_text(query.message.text + f"\n\n📋 {tareas}")
+        await query.answer()

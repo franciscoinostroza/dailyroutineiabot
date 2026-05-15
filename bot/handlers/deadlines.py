@@ -40,7 +40,10 @@ async def deadline(update, context: ContextTypes.DEFAULT_TYPE):
             return
         proyecto = " ".join(context.args[1:])
         WorksheetDeadlines.mark_delivered(proyecto)
-        await update.message.reply_text(f"✅ {proyecto} marcado como entregado. ¡Bien ahi!")
+        await update.message.reply_text(
+            f"✅ {proyecto} marcado como entregado.\n\n"
+            f"🎉 TREMENDO. Otro proyecto cerrado. ¿Cuantos van este mes?"
+        )
 
     elif sub == "borrar":
         if len(context.args) < 2:
