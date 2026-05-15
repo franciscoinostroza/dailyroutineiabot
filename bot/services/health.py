@@ -5,7 +5,6 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
 
 from bot.config import settings
-from bot.tools.rutina import MENSAJES_DIA
 
 _http_server: HTTPServer | None = None
 _thread: threading.Thread | None = None
@@ -14,10 +13,17 @@ _thread: threading.Thread | None = None
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
+            try:
+                from bot.tools.rutina import MENSAJES_DIA
+                agenda_entries = sum(len(v) for v in MENSAJES_DIA.values())
+                agenda_days = len(MENSAJES_DIA)
+            except Exception:
+                agenda_entries = 0
+                agenda_days = 0
             status = {
                 "status": "ok",
-                "agenda_entries": sum(len(v) for v in MENSAJES_DIA.values()),
-                "agenda_days": len(MENSAJES_DIA),
+                "agenda_entries": agenda_entries,
+                "agenda_days": agenda_days,
             }
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
