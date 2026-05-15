@@ -38,6 +38,8 @@ def setup_scheduler(
     notificar_pagos_fn,
     notificar_recordatorios_fn,
     enviar_resumen_semanal_fn,
+    enviar_briefing_fn=None,
+    verificar_inactividad_fn=None,
 ) -> AsyncIOScheduler:
     import pytz
     tz = pytz.timezone(settings.timezone)
@@ -68,6 +70,32 @@ def setup_scheduler(
         args=[app.bot],
         id="resumen_semanal",
     )
+
+    if enviar_briefing_fn:
+        scheduler.add_job(
+            enviar_briefing_fn,
+            CronTrigger(
+                day_of_week="mon-sun",
+                hour=settings.briefing_hour,
+                minute=settings.briefing_minute,
+                timezone=tz,
+            ),
+            args=[app.bot],
+            id="briefing_matutino",
+        )
+
+    if verificar_inactividad_fn:
+        scheduler.add_job(
+            verificar_inactividad_fn,
+            CronTrigger(
+                day_of_week="mon-sun",
+                hour=settings.inactivity_alert_hour,
+                minute=settings.inactivity_alert_minute,
+                timezone=tz,
+            ),
+            args=[app.bot],
+            id="verificar_inactividad",
+        )
 
     scheduler.start()
     logging.info("Scheduler iniciado.")

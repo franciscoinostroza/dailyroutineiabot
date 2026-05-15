@@ -7,6 +7,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from bot.config import settings
 from bot.tools.rutina import cargar_agenda, MENSAJES_DIA
 from bot.tools.resumen import notificar_pagos, notificar_recordatorios, enviar_resumen_semanal
+from bot.tools.briefing import enviar_briefing
+from bot.tools.trabajo import verificar_inactividad
 from bot.services.scheduler import setup_scheduler
 from bot.services.health import start_health_server, stop_health_server
 
@@ -19,6 +21,8 @@ from bot.handlers.callbacks import callback_botones
 from bot.handlers.ia_chat import responder_ia
 from bot.handlers.presupuestos import presupuesto
 from bot.handlers.exportar import estadisticas, exportar
+from bot.handlers.voice import handle_voice
+from bot.handlers.ticket import handle_ticket_photo
 
 
 logging.basicConfig(
@@ -59,11 +63,14 @@ async def main():
     app.add_handler(CommandHandler("presupuesto", presupuesto))
     app.add_handler(CommandHandler("estadisticas", estadisticas))
     app.add_handler(CommandHandler("exportar", exportar))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_ticket_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, responder_ia))
 
     scheduler = setup_scheduler(
         app, MENSAJES_DIA,
         notificar_pagos, notificar_recordatorios, enviar_resumen_semanal,
+        enviar_briefing, verificar_inactividad,
     )
 
     health_port = int(os.environ.get("HEALTH_PORT", "0"))

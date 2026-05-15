@@ -71,6 +71,7 @@ def _build_system_prompt() -> str:
         "Tambien podes usar:\n"
         "  agregar_presupuesto — definir presupuesto mensual por categoria\n"
         "  ver_presupuesto — ver estado de presupuestos con barras de progreso\n"
+        "Francisco puede mandarte notas de voz (las transcribo automaticamente) y fotos de tickets de compra (los proceso con OCR).\n"
         "Responde siempre en espanol, de forma calida, natural y cercana, sin markdown ni asteriscos.\n"
         "No uses frases roboticas como 'en lenguaje natural' o 'asistente virtual'."
     )

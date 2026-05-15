@@ -31,6 +31,13 @@ class Settings:
 
     payments_reminder_window_days: int = field(default_factory=lambda: int(os.getenv("PAYMENTS_WINDOW_DAYS", "3")))
 
+    briefing_hour: int = field(default_factory=lambda: int(os.getenv("BRIEFING_HOUR", "8")))
+    briefing_minute: int = field(default_factory=lambda: int(os.getenv("BRIEFING_MINUTE", "0")))
+
+    inactivity_alert_days: int = field(default_factory=lambda: int(os.getenv("INACTIVITY_ALERT_DAYS", "3")))
+    inactivity_alert_hour: int = field(default_factory=lambda: int(os.getenv("INACTIVITY_ALERT_HOUR", "10")))
+    inactivity_alert_minute: int = field(default_factory=lambda: int(os.getenv("INACTIVITY_ALERT_MINUTE", "0")))
+
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
 

@@ -74,3 +74,31 @@ async def ver_horas_trabajadas() -> str:
     for proy, mins in por_proy.items():
         lineas.append(f"  {proy}: {mins / 60:.1f}h")
     return "\n".join(lineas)
+
+
+async def verificar_inactividad(bot) -> None:
+    import logging
+    from datetime import timedelta
+    dias_ventana = settings.inactivity_alert_days
+    hoy = datetime.now(tz).date()
+    desde = (hoy - timedelta(days=dias_ventana)).strftime("%Y-%m-%d")
+
+    rows = WorksheetTrabajo.read_all()
+    sesiones_en_ventana = [
+        r for r in rows
+        if str(r.get("fecha", "")) >= desde
+        and str(r.get("estado", "")).lower() in ("terminado", "activo")
+    ]
+    if sesiones_en_ventana:
+        return
+
+    try:
+        await bot.send_message(
+            chat_id=settings.chat_id,
+            text=(
+                f"⚠️ Francisco, no registraste horas de trabajo en {dias_ventana} dias.\n"
+                "Arrancaste algo nuevo? Decime 'empiezo a trabajar en X' y lo trackeo."
+            )
+        )
+    except Exception as e:
+        logging.error(f"Error en alerta de inactividad: {e}")
