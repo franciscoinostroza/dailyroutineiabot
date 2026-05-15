@@ -40,6 +40,8 @@ def setup_scheduler(
     enviar_resumen_semanal_fn,
     enviar_briefing_fn=None,
     verificar_inactividad_fn=None,
+    enviar_standup_fn=None,
+    verificar_deadlines_fn=None,
 ) -> AsyncIOScheduler:
     import pytz
     tz = pytz.timezone(settings.timezone)
@@ -95,6 +97,32 @@ def setup_scheduler(
             ),
             args=[app.bot],
             id="verificar_inactividad",
+        )
+
+    if enviar_standup_fn:
+        scheduler.add_job(
+            enviar_standup_fn,
+            CronTrigger(
+                day_of_week="mon-sun",
+                hour=settings.standup_hour,
+                minute=settings.standup_minute,
+                timezone=tz,
+            ),
+            args=[app.bot],
+            id="standup_matutino",
+        )
+
+    if verificar_deadlines_fn:
+        scheduler.add_job(
+            verificar_deadlines_fn,
+            CronTrigger(
+                day_of_week="mon-sun",
+                hour=settings.deadline_alert_hour,
+                minute=settings.deadline_alert_minute,
+                timezone=tz,
+            ),
+            args=[app.bot],
+            id="verificar_deadlines",
         )
 
     scheduler.start()

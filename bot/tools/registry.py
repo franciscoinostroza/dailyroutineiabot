@@ -270,11 +270,110 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "crear_proyecto",
+            "description": "Crea un nuevo proyecto freelance con nombre y descripcion. Usala cuando Francisco diga 'nuevo proyecto X' o 'arranco proyecto Y'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string", "description": "Nombre del proyecto"},
+                    "descripcion": {"type": "string", "description": "Descripcion breve"},
+                },
+                "required": ["nombre"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_proyecto_info",
+            "description": "Muestra informacion de un proyecto: horas trabajadas, documentacion generada, estado.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string", "description": "Nombre del proyecto"},
+                },
+                "required": ["nombre"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "registrar_habito",
+            "description": "Registra que Francisco completo un habito diario (ejercicio, meditacion, lectura). Devuelve racha actual y adherencia mensual.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "habito": {"type": "string", "description": "El habito completado: ejercicio, meditacion, lectura, etc."},
+                },
+                "required": ["habito"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_habitos",
+            "description": "Muestra todos los habitos con rachas y porcentaje de adherencia del mes.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "agregar_deadline",
+            "description": "Agrega una fecha de entrega para un proyecto freelance. La IA calcula los dias habiles restantes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "proyecto": {"type": "string", "description": "Nombre del proyecto"},
+                    "fecha_entrega": {"type": "string", "description": "Fecha YYYY-MM-DD"},
+                },
+                "required": ["proyecto", "fecha_entrega"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_deadlines",
+            "description": "Muestra todos los deadlines activos con dias habiles restantes.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "agregar_factura",
+            "description": "Registra una factura para un cliente freelance. Usala cuando Francisco diga 'facture X a cliente Y' o 'cobre Z usd de proyecto W'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cliente": {"type": "string", "description": "Nombre del cliente o proyecto"},
+                    "monto": {"type": "number", "description": "Monto facturado"},
+                    "concepto": {"type": "string", "description": "Descripcion del trabajo facturado"},
+                    "moneda": {"type": "string", "enum": ["usd", "ars"], "description": "Moneda: usd o ars"},
+                },
+                "required": ["cliente", "monto", "concepto"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ver_facturas",
+            "description": "Muestra las facturas del mes con totales en USD y ARS, y pendientes de cobro.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 
 async def execute_tool(nombre: str, args: dict) -> str:
-    from . import rutina, compras, pagos, calendario, trabajo, recordatorios, resumen, presupuestos
+    from . import rutina, compras, pagos, calendario, trabajo, recordatorios, resumen, presupuestos, proyectos, habitos, deadlines, facturas
 
     tool_map = {
         "agregar_a_rutina": rutina.agregar_a_rutina,
@@ -298,6 +397,14 @@ async def execute_tool(nombre: str, args: dict) -> str:
         "resumen_semanal_tool": resumen.resumen_semanal_tool,
         "agregar_presupuesto": presupuestos.agregar_presupuesto,
         "ver_presupuesto": presupuestos.ver_presupuesto,
+        "crear_proyecto": proyectos.add_new_project,
+        "ver_proyecto_info": proyectos.view_project_info,
+        "registrar_habito": habitos.registrar_habito,
+        "ver_habitos": habitos.ver_habitos,
+        "agregar_deadline": deadlines.agregar_deadline,
+        "ver_deadlines": deadlines.ver_deadlines,
+        "agregar_factura": facturas.agregar_factura,
+        "ver_facturas": facturas.ver_facturas,
     }
 
     fn = tool_map.get(nombre)

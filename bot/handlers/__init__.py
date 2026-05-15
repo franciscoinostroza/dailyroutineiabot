@@ -8,3 +8,9 @@ from .ia_chat import responder_ia
 from .presupuestos import presupuesto
 from .exportar import estadisticas, exportar
 from .rutina import callback_rutina_confirmacion
+from .voice import handle_voice
+from .ticket import handle_ticket_photo
+from .proyectos import proyecto
+from .habitos import habitos
+from .deadlines import deadline
+from .facturas import factura

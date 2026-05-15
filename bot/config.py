@@ -38,6 +38,12 @@ class Settings:
     inactivity_alert_hour: int = field(default_factory=lambda: int(os.getenv("INACTIVITY_ALERT_HOUR", "10")))
     inactivity_alert_minute: int = field(default_factory=lambda: int(os.getenv("INACTIVITY_ALERT_MINUTE", "0")))
 
+    standup_hour: int = field(default_factory=lambda: int(os.getenv("STANDUP_HOUR", "7")))
+    standup_minute: int = field(default_factory=lambda: int(os.getenv("STANDUP_MINUTE", "50")))
+
+    deadline_alert_hour: int = field(default_factory=lambda: int(os.getenv("DEADLINE_ALERT_HOUR", "8")))
+    deadline_alert_minute: int = field(default_factory=lambda: int(os.getenv("DEADLINE_ALERT_MINUTE", "5")))
+
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
 

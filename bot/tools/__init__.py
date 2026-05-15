@@ -9,3 +9,9 @@ from .resumen import resumen_semanal_tool
 from .presupuestos import agregar_presupuesto, ver_presupuesto
 from .estadisticas import generar_grafico_gastos, generar_grafico_trabajo
 from .exportar import exportar_gastos, exportar_pagos, exportar_trabajo
+from .proyectos import (
+    add_new_project, generate_documentation, view_project_info,
+)
+from .habitos import registrar_habito as ai_registrar_habito, ver_habitos as ai_ver_habitos
+from .deadlines import agregar_deadline as ai_agregar_deadline, ver_deadlines as ai_ver_deadlines
+from .facturas import agregar_factura as ai_agregar_factura, ver_facturas as ai_ver_facturas
