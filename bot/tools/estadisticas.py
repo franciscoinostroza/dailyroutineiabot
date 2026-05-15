@@ -11,10 +11,13 @@ tz = pytz.timezone(settings.timezone)
 
 
 async def generar_grafico_gastos(meses: int = 3) -> io.BytesIO | None:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import matplotlib.dates as mdates
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        logging.warning("matplotlib no disponible, graficos deshabilitados")
+        return None
 
     hoy = datetime.now(tz)
     try:
@@ -76,9 +79,12 @@ async def generar_grafico_gastos(meses: int = 3) -> io.BytesIO | None:
 
 
 async def generar_grafico_trabajo(meses: int = 3) -> io.BytesIO | None:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        return None
 
     horas, sesiones, por_proy = _calcular_horas()
 
